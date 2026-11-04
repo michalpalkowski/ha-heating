@@ -1,5 +1,7 @@
 # UFH Heating — Home Assistant / HACS
 
+![UFH Heating](brand/icon.png)
+
 Lokalna integracja do sterownika ogrzewania podłogowego UFH1 na XIAO ESP32-C6.
 Konfiguracja z interfejsu HA, termostaty stref, diagnostyka obiegów i podpisane
 aktualizacje firmware przez standardowe encje `update`.
