@@ -25,6 +25,11 @@ class HeatingEntity(Entity):
         )
 
     @property
+    def floorplan_identity(self) -> dict[str, int | str]:
+        """Stable, non-secret identity; entity IDs are user-editable in HA."""
+        return {"ufh_protocol": 1, "ufh_controller": self.runtime.settings.device_id}
+
+    @property
     def available(self) -> bool:
         return self.runtime.live
 

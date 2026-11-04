@@ -87,4 +87,4 @@ class HeatingLoop(HeatingEntity, BinarySensorEntity):
 
     @property
     def extra_state_attributes(self):
-        return self._data
+        return {**self._data, **self.floorplan_identity}

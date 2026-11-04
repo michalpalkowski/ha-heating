@@ -84,6 +84,7 @@ class HeatingClimate(HeatingEntity, ClimateEntity):
     def extra_state_attributes(self):
         status = self.runtime.model.status
         return {
+            **self.floorplan_identity,
             "zone_id": self.runtime.settings.zones[self.index].id,
             "temperature_evidence": "ha_report"
             if self.runtime.settings.sensors[self.index]

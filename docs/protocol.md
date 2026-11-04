@@ -54,3 +54,18 @@ new authenticated trial boot, confirmation, then a distinct normal boot. The
 update action waits for final success/failure; service failures are explicit.
 One job at a time, no automatic heating resumption. Network migration is outside
 this integration's scope; use the private commissioning tools.
+
+## Frontend identity contract — 1 (integration 0.1.1)
+
+Native climate and loop binary-sensor attributes include `ufh_protocol=1`
+and `ufh_controller`, the public main-controller identity in lowercase hex.
+Climate attributes include the stable `zone_id`; loop attributes include
+`zone_id`, `loop_id` and the existing schema-1 actuation evidence. A dashboard
+may resolve these attributes to the CURRENT entity ID, so HA renames do not
+redirect or break control. Require a single matching controller and exactly
+one entity per slot. Duplicate candidates are an error, not first-match wins.
+The identity is not a password or HMAC key. Diagnostics remain redacted.
+
+This contract contains no floorplan geometry or house assets. They belong in
+the private house repository. UI commands use the normal HA climate services
+and inherit HA permission checks and the commissioning interlock.

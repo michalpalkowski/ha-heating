@@ -127,6 +127,15 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(climate.hvac_mode, "off")
         self.assertEqual(update.installed_version, "0.2.0")
         self.assertFalse(loop.is_on)
+        for entity in (climate, loop):
+            attrs = entity.extra_state_attributes
+            self.assertEqual(attrs["ufh_protocol"], 1)
+            self.assertEqual(attrs["ufh_controller"], DATA["device_id"])
+            self.assertNotIn(KEY.hex(), json.dumps(attrs))
+            self.assertNotIn(MANAGEMENT_KEY.hex(), json.dumps(attrs))
+        climate.entity_id = "climate.renamed_room"
+        self.assertEqual(climate.extra_state_attributes["zone_id"], "ground_bathroom")
+        self.assertEqual(loop.extra_state_attributes["loop_id"], "ground_1")
         with self.assertRaises(HomeAssistantError):
             await climate.async_turn_on()
         await climate.async_set_temperature(temperature=23)
