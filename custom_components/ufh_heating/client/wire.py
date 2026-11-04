@@ -83,14 +83,28 @@ class Status:
     demand: int
     zone_faults: tuple[int, ...]
     island_fault: int
-    commissioned: bool
+    operation_enabled: bool
     rejected: int
     bus_errors: int
+    schema: int = 2
+    installation_facts: int | None = None
+    relay_profile: int | None = None
+    config_schema: int = 3
 
     @classmethod
     def decode(cls, raw: bytes) -> Status:
-        if len(raw) != 58 or raw[34] > 1 or raw[49] > 1 or raw[56:] != b"\0\0":
-            raise ValueError("invalid status")
+        legacy = len(raw) == 58 and raw[56:] == b"\0\0"
+        current = (
+            len(raw) == 60
+            and raw[56] == 2
+            and raw[57] & ~3 == 0
+            and raw[58] <= 2
+            and raw[59] in (3, 4)
+        )
+        if not (legacy or current) or raw[34] > 1 or raw[49] > 1:
+            raise ValueError("invalid status version")
+        if current and raw[49] and raw[58] == 0:
+            raise ValueError("operation enabled without an output interface")
         if raw[35] > 5 or raw[36] > 5 or raw[48] > 4 or any(f > 6 for f in raw[39:48]):
             raise ValueError("unknown diagnostic code")
         client, accepted, uptime = struct.unpack_from(">16sQQ", raw)
@@ -112,6 +126,10 @@ class Status:
             bool(raw[49]),
             struct.unpack_from(">I", raw, 50)[0],
             struct.unpack_from(">H", raw, 54)[0],
+            1 if legacy else 2,
+            None if legacy else raw[57],
+            None if legacy else raw[58],
+            3 if legacy else raw[59],
         )
 
 
@@ -156,3 +174,11 @@ def control_payload(
     if len(out) != 144:
         raise AssertionError("wire schema drift")
     return bytes(out)
+
+
+def control_payload_v2(
+    client: bytes, zones: tuple[Zone, ...], source: int, source_until: int, source_authority: bool
+) -> bytes:
+    if type(source_authority) is not bool:
+        raise ValueError("source authority must be explicit")
+    return control_payload(client, zones, source, source_until) + bytes((int(source_authority),))

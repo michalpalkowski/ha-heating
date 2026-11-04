@@ -32,13 +32,14 @@ def status(
     uptime=1000,
     sequence=1,
     heat=False,
-    commissioned=True,
+    operation_enabled=True,
     session=SESSION,
 ):
-    payload = bytearray(58)
+    payload = bytearray(60)
     struct.pack_into(">16sQQ", payload, 0, client, accepted, uptime)
     payload[34] = int(heat)
-    payload[49] = int(commissioned)
+    payload[49] = int(operation_enabled)
+    payload[56:60] = bytes((2, 0, 1 if operation_enabled else 0, 4))
     return Packet(2, 1, session, sequence, uptime, bytes(payload)).encode(KEY)
 
 
@@ -130,7 +131,7 @@ class FreshnessTests(unittest.TestCase):
             unix_ms=1_000_001,
             monotonic=11,
         )
-        packet = decode(g.command(monotonic=11), KEY)
+        packet = decode(g.command(source_authority=True, monotonic=11), KEY)
         self.assertEqual(packet.payload[22], 3)
         self.assertEqual(struct.unpack_from(">Q", packet.payload, 23)[0], 0)
 
@@ -139,10 +140,10 @@ class FreshnessTests(unittest.TestCase):
         g.accept_status(status(), retained=False, monotonic=10)
         raw = json.dumps({"schema": 1, "state": "off", "reported_at_unix_ms": 1_000_000}).encode()
         g.source_evidence(raw, retained=False, unix_ms=1_000_000, monotonic=10)
-        packet = decode(g.command(monotonic=11), KEY)
+        packet = decode(g.command(source_authority=True, monotonic=11), KEY)
         self.assertEqual(packet.payload[135], 0)
         g.accept_status(status(uptime=4000, sequence=2), retained=False, monotonic=13)
-        packet = decode(g.command(monotonic=13), KEY)
+        packet = decode(g.command(source_authority=True, monotonic=13), KEY)
         self.assertEqual(packet.payload[135], 2)
 
 
@@ -151,7 +152,7 @@ class SessionTests(unittest.TestCase):
         g = gateway()
         g.accept_status(status(heat=True), retained=False, monotonic=10)
         self.assertFalse(g.heat_permitted(10))
-        command = decode(g.command(monotonic=10), KEY)
+        command = decode(g.command(source_authority=True, monotonic=10), KEY)
         g.accept_status(
             status(
                 client=g.client_session,
@@ -169,7 +170,7 @@ class SessionTests(unittest.TestCase):
     def test_old_status_after_gateway_restart_cannot_enable_boiler(self):
         old = gateway()
         old.accept_status(status(), retained=False, monotonic=10)
-        command = decode(old.command(monotonic=10), KEY)
+        command = decode(old.command(source_authority=True, monotonic=10), KEY)
         stale = status(client=old.client_session, accepted=command.sequence, sequence=2, heat=True)
         new = gateway()
         new.accept_status(stale, retained=False, monotonic=20)
@@ -193,12 +194,12 @@ class SessionTests(unittest.TestCase):
 
     def test_commands_and_pending_acks_are_bounded(self):
         g = gateway()
-        self.assertIsNone(g.command(monotonic=1))
+        self.assertIsNone(g.command(source_authority=True, monotonic=1))
         g.accept_status(status(), retained=False, monotonic=1)
         for _ in range(100):
-            self.assertIsNotNone(g.command(monotonic=1))
+            self.assertIsNotNone(g.command(source_authority=True, monotonic=1))
         self.assertEqual(len(g.pending), 32)
-        self.assertIsNone(g.command(monotonic=5))
+        self.assertIsNone(g.command(source_authority=True, monotonic=5))
 
     def test_ui_is_non_optimistic_and_invalid_setpoints_are_rejected(self):
         g = gateway()
@@ -208,3 +209,48 @@ class SessionTests(unittest.TestCase):
         g.set_target(0, "22.5")
         self.assertEqual(g.target[0], 2250)
         self.assertIsNone(g.confirmed)
+
+
+class ProductionContractTests(unittest.TestCase):
+    def test_legacy_controller_is_read_only_and_current_authority_is_explicit(self):
+        from custom_components.ufh_heating.client.wire import Status
+
+        g = gateway()
+        raw = bytearray(decode(status(), KEY).payload)
+        legacy = bytes(raw[:56]) + b"\0\0"
+        decoded = Status.decode(legacy)
+        self.assertEqual(decoded.schema, 1)
+        self.assertIsNone(decoded.installation_facts)
+        self.assertIsNone(decoded.relay_profile)
+        packet = Packet(2, 1, SESSION, 1, 1000, legacy).encode(KEY)
+        g.accept_status(packet, retained=False, monotonic=0)
+        g.set_mode(0, "heat")
+        command = decode(g.command(source_authority=True, monotonic=0), KEY)
+        self.assertEqual(len(command.payload), 144)
+        self.assertEqual(command.payload[16:18], b"\0\0")
+        self.assertFalse(g.heat_permitted(0))
+
+        current = gateway()
+        current.accept_status(status(), retained=False, monotonic=0)
+        current.set_mode(0, "heat")
+        command = decode(current.command(source_authority=False, monotonic=0), KEY)
+        self.assertEqual(len(command.payload), 145)
+        self.assertEqual(command.payload[144], 0)
+        current.accept_status(
+            status(client=current.client_session, accepted=command.sequence, sequence=2, heat=True),
+            retained=False,
+            monotonic=0.1,
+        )
+        self.assertFalse(current.heat_permitted(0.1))
+        raw[58] = 0
+        with self.assertRaises(ValueError):
+            Status.decode(bytes(raw))
+
+    def test_mqtt_reconnect_does_not_retimestamp_room_measurements(self):
+        g = gateway()
+        g.measurement(0, report(), retained=False, unix_ms=1_000_000, monotonic=10)
+        sample = g.samples[0]
+        g.disconnected()
+        self.assertEqual(g.samples[0], sample)
+        self.assertFalse(any(g.enabled))
+        self.assertIsNone(g.status)

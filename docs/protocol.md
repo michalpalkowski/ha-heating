@@ -1,9 +1,9 @@
-# UFH1 integration contract — 1
+# UFH1 integration contract — 2 (client 0.2 / firmware 0.3)
 
 This contract precedes the HA adapter. The private controller is the authority
-for valve timing, temperature policy, boiler sequencing and hardware acceptance.
-The integration never provisions GPIO, changes commissioning flags or bypasses
-an unverified hardware profile.
+for valve timing, temperature policy and boiler sequencing. Operator permission
+is separate from installation facts; it does not certify electrical tests.
+No automatic arming, GPIO bypass or invented watchdog evidence is permitted.
 
 ## Boundaries
 
@@ -30,20 +30,24 @@ Channel permutations must match the separately provisioned controller.
 Disabled/unbound zones are never armed. Upper firmware is optional.
 
 Temperature input accepts the strict original MQTT report contract, or explicit
-HA temperature sensor bindings in options. HA bindings accept only new reporting
-events after startup, preserve the original event time and do not poll/re-stamp
-cached values. Celsius/Fahrenheit is converted to centi-degrees. The age limit
+HA temperature sensor bindings in options. HA bindings subscribe before priming a current real report with its ORIGINAL
+`last_reported`; subsequent events preserve their own report time. Restored or
+stale values are rejected. Timers never re-stamp cached temperature values. Celsius/Fahrenheit is converted to centi-degrees. The age limit
 is 1–900 seconds. Invalid/unknown reports immediately invalidate that sample.
 HA report time proves a report reached HA, not a fresh physical measurement:
 use sensor integrations which preserve real report timing. For stronger evidence,
 use timestamped MQTT reports from the actual sensor adapter (see installation).
 
-Boiler control remains an explicit, independently expiring HA automation lease.
-The integration publishes `boiler/request`, consumes timestamped `boiler/state`,
-and never directly toggles an arbitrary boiler switch. No single owner selected
-means no valid source evidence and consequently no autonomous heat. See the
-provided blueprint and commissioning checklist. Existing house-specific boiler
-handover automations can consume the same protocol without modification.
+Boiler control belongs to one explicitly configured HA coordinator. The client
+exposes a fresh `heat_request` binary sensor and accepts `report_source` only
+from system contexts (`user_id=None`). That port reads the actual configured
+on/off entity inside HA; arbitrary MQTT `boiler/state` is not subscribed.
+The authority flag expires after 3 s, independently of the source state. A v2
+control includes the authority byte; the MCU masks zone enables when absent.
+The coordinator must revoke authority for AC/off/manual mode and enforce CO OFF
+on stale/unavailable requests. Never run two independent boiler owners.
+The MQTT `boiler/request` lease remains informational for compatible observers;
+it is not a second boiler owner in this installation.
 
 OTA files are local, signed `.ufu` artifacts in
 `CONFIG/ufh_heating/releases/DEVICE_ID/`. No HTTP downloader, arbitrary path,
@@ -68,4 +72,31 @@ The identity is not a password or HMAC key. Diagnostics remain redacted.
 
 This contract contains no floorplan geometry or house assets. They belong in
 the private house repository. UI commands use the normal HA climate services
-and inherit HA permission checks and the commissioning interlock.
+and inherit HA entity control permissions and the explicit operation state.
+
+## Production payloads
+
+UFH1 envelope and HMAC domains are unchanged. Control v2 is 145 bytes: existing
+144-byte layout plus authority boolean at offset 144. Status v2 is 60 bytes:
+offsets 0–55 retain their meaning except byte 49 is operator permission;
+56=2, 57=installation fact bits (electrical test / external cutoff),
+58=relay profile (0 unspecified, 1 direct LOW, 2 inverting buffer), 59=UFC schema.
+Reject invalid booleans, reserved bits, unknown profiles and enabled/profile-0.
+Old 58-byte status is recognized only as a legacy read-only device for OTA;
+its facts are unknown and only legacy all-OFF control is transmitted.
+
+Management opcode 8 has two bytes: enabled (0/1), interface (0/1/2). Only the
+management key authorizes it. It changes UFC3→UFC4 plus operator permission and
+interface, preserving identities, credentials, mappings, timings and facts.
+It requires quiescence, journal staging, trial boot and distinct confirmed
+normal boot with incremented generation. UI state follows authenticated evidence.
+`set_operation` additionally checks HA entity CONTROL permission for user calls.
+No user-supplied source-state JSON is accepted by that service.
+
+First migration from firmware 0.2 uses an explicitly signed eligibility range
+[3,3], accepted by its old verifier. The 0.3 image understands UFC3 and UFC4;
+operation command migrates the configuration only AFTER successful OTA.
+Subsequent release manifests may declare [3,4] or [4,4]. Out-of-range device
+configurations are rejected by firmware before writing an application.
+Targets persist in HA storage; active zone modes do not survive transport loss,
+restart, options change or maintenance. Each zone must be explicitly re-enabled.

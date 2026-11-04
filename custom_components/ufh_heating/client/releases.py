@@ -96,7 +96,7 @@ class Package:
         m, image = data[:MANIFEST_SIZE], data[MANIFEST_SIZE:]
         if (
             m[:8] != b"UFU1" + bytes((1, role, 2, 2))
-            or m[14:16] != b"\x03\x03"
+            or not (3 <= m[14] <= m[15] <= 4)
             or m[68:70] != b"\x00\x01"
             or any(m[70:80])
         ):

@@ -7,6 +7,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 
+from . import services
 from .const import PLATFORMS
 from .runtime import HeatingRuntime
 from .settings import Settings
@@ -31,6 +32,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: HeatingEntry) -> bool:
     except Exception:
         await runtime.async_stop()
         raise
+    services.register(hass, entry)
     entry.async_on_unload(entry.add_update_listener(async_options_updated))
     return True
 
@@ -41,6 +43,7 @@ async def async_options_updated(hass: HomeAssistant, entry: HeatingEntry) -> Non
 
 async def async_unload_entry(hass: HomeAssistant, entry: HeatingEntry) -> bool:
     if await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
+        services.unregister(hass)
         await entry.runtime_data.async_stop()
         return True
     return False

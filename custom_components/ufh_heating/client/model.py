@@ -7,7 +7,7 @@ import secrets
 from collections import OrderedDict
 from dataclasses import dataclass
 
-from .wire import Packet, Status, Zone, control_payload, decode
+from .wire import Packet, Status, Zone, control_payload, control_payload_v2, decode
 
 BASE = "heating/house/v1"
 ZONE_IDS = (
@@ -22,7 +22,7 @@ ZONE_IDS = (
     "upper_bathroom_hall",
 )
 PHASES = ("idle", "opening", "heating", "awaiting_source_off", "overrun", "blocked")
-FAULTS = ("ok", "not_commissioned", "input_expired", "source_unknown", "output", "time")
+FAULTS = ("ok", "operation_disabled", "input_expired", "source_unknown", "output", "time")
 ZONE_FAULTS = (
     "ok",
     "disabled",
@@ -52,6 +52,12 @@ class Sample:
     observed_unix_ms: int
 
 
+@dataclass(frozen=True, slots=True)
+class SentControl:
+    zones: tuple[Zone, ...]
+    source_authority: bool
+
+
 class Gateway:
     def __init__(self, key: bytes, zones: tuple[ZoneConfig, ...]) -> None:
         if len(zones) != 9 or len({z.id for z in zones}) != 9:
@@ -66,8 +72,9 @@ class Gateway:
         self.status_at = 0.0
         self.status_sequence = 0
         self.sequence = 0
-        self.pending: OrderedDict[int, tuple[Zone, ...]] = OrderedDict()
+        self.pending: OrderedDict[int, SentControl] = OrderedDict()
         self.confirmed: tuple[Zone, ...] | None = None
+        self.confirmed_authority = False
         self.target = [z.initial_target for z in zones]
         self.enabled = [False] * 9  # explicit safe startup, operator must arm climate entities
         self.samples: list[Sample | None] = [None] * 9
@@ -80,9 +87,10 @@ class Gateway:
     def disconnected(self) -> None:
         self.status = None
         self.confirmed = None
+        self.confirmed_authority = False
         self.pending.clear()
         self.enabled = [False] * 9
-        self.samples = [None] * 9
+        # Room reports have their own original expiry, independent of transport.
         self.source = 2
         self.source_at = float("-inf")
 
@@ -150,6 +158,13 @@ class Gateway:
             timestamp,
         )
 
+    def observe_source(self, state: str, *, monotonic: float) -> None:
+        """In-process HA coordinator observation, not an externally timestamped report."""
+        if state not in ("off", "on", "unknown"):
+            raise ValueError("unknown source observation")
+        self.source = {"off": 0, "on": 1, "unknown": 2}[state]
+        self.source_at = monotonic
+
     def source_evidence(
         self, payload: bytes, *, retained: bool, unix_ms: int, monotonic: float
     ) -> None:
@@ -191,6 +206,7 @@ class Gateway:
             self.status = None
             self.pending.clear()
             self.confirmed = None
+            self.confirmed_authority = False
             self.enabled = [False] * 9
         if packet.sequence <= self.status_sequence:
             raise ValueError("replayed status")
@@ -205,13 +221,14 @@ class Gateway:
         self.status = state
         self.status_at = monotonic
         if state.client_session == self.client_session and state.accepted_sequence in self.pending:
-            self.confirmed = self.pending[state.accepted_sequence]
+            self.confirmed = self.pending[state.accepted_sequence].zones
+            self.confirmed_authority = self.pending[state.accepted_sequence].source_authority
             for sequence in tuple(self.pending):
                 if sequence < state.accepted_sequence:
                     del self.pending[sequence]
         return state
 
-    def command(self, *, monotonic: float) -> bytes | None:
+    def command(self, *, monotonic: float, source_authority: bool = False) -> bytes | None:
         if self.status is None or self.node_session is None or monotonic - self.status_at > 3:
             return None
         uptime = self.status.uptime_ms + int((monotonic - self.status_at) * 1000)
@@ -238,12 +255,25 @@ class Gateway:
         source_until = (
             uptime + max(0, int((3 - (monotonic - self.source_at)) * 1000)) if source != 2 else 0
         )
-        payload = control_payload(self.client_session, typed, source, source_until)
+        if self.status.schema == 1:
+            # Legacy packets are accepted for diagnostics/OTA, never new heating.
+            legacy_zones = tuple(
+                Zone(False, zone.target, zone.temperature, zone.quality, zone.valid_until)
+                for zone in typed
+            )
+            payload = control_payload(self.client_session, legacy_zones, source, source_until)
+            typed = legacy_zones
+        else:
+            payload = control_payload_v2(
+                self.client_session, typed, source, source_until, source_authority
+            )
         self.sequence += 1
         raw = Packet(1, 1, self.node_session, self.sequence, uptime + 5000, payload).encode(
             self.key
         )
-        self.pending[self.sequence] = typed
+        self.pending[self.sequence] = SentControl(
+            typed, source_authority if self.status.schema == 2 else False
+        )
         while len(self.pending) > 32:
             self.pending.popitem(last=False)
         return raw
@@ -263,7 +293,9 @@ class Gateway:
         return bool(
             state
             and self.is_live(monotonic)
-            and state.commissioned
+            and self.confirmed_authority
+            and state.schema == 2
+            and state.operation_enabled
             and state.fault == 0
             and state.island_fault == 0
             and state.heat_request

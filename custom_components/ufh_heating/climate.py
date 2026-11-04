@@ -85,6 +85,7 @@ class HeatingClimate(HeatingEntity, ClimateEntity):
         status = self.runtime.model.status
         return {
             **self.floorplan_identity,
+            "source_authority": time.monotonic() < self.runtime._source_authorized_until,
             "zone_id": self.runtime.settings.zones[self.index].id,
             "temperature_evidence": "ha_report"
             if self.runtime.settings.sensors[self.index]

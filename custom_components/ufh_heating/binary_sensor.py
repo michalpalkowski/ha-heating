@@ -16,7 +16,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     async_add_entities(
         [
             HeatingRequest(runtime),
-            HeatingCommissioned(runtime),
+            HeatingOperationEnabled(runtime),
             HeatingConflict(runtime),
             *(HeatingLoop(runtime, b) for b in runtime.settings.bindings),
         ]
@@ -33,17 +33,51 @@ class HeatingRequest(HeatingEntity, BinarySensorEntity):
     def is_on(self):
         return self.runtime.model.heat_permitted(time.monotonic()) if self.available else None
 
+    @property
+    def extra_state_attributes(self):
+        status = self.runtime.model.status
+        return {
+            **self.floorplan_identity,
+            "ufh_role": "heat_request",
+            "status_schema": status.schema if status else None,
+            "operation_enabled": status.operation_enabled
+            if status and self.available and status.schema == 2
+            else None,
+        }
 
-class HeatingCommissioned(HeatingEntity, BinarySensorEntity):
+
+class HeatingOperationEnabled(HeatingEntity, BinarySensorEntity):
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(self, runtime):
-        super().__init__(runtime, "commissioned", "Hardware commissioned")
+        super().__init__(runtime, "operation_enabled", "Operation enabled")
 
     @property
     def is_on(self):
         status = self.runtime.model.status
-        return status.commissioned if status and self.available else None
+        return status.operation_enabled if status and self.available else None
+
+    @property
+    def extra_state_attributes(self):
+        status = self.runtime.model.status
+        return {
+            **self.floorplan_identity,
+            "ufh_role": "operation",
+            "status_schema": status.schema if status else None,
+            "electrical_tested": bool(status.installation_facts & 1)
+            if status and status.installation_facts is not None
+            else None,
+            "external_cutoff_wired": bool(status.installation_facts & 2)
+            if status and status.installation_facts is not None
+            else None,
+            "relay_profile": status.relay_profile if status else None,
+            "maintenance_phase": self.runtime.maintenance.job.phase
+            if self.runtime.maintenance.active
+            else None,
+            "operation_error": self.runtime.maintenance.job.error
+            if self.runtime.maintenance.job
+            else None,
+        }
 
 
 class HeatingConflict(HeatingEntity, BinarySensorEntity):

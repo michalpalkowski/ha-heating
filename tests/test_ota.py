@@ -93,7 +93,7 @@ class UpdateTests(unittest.TestCase):
         self.client.accept(wire(1), False, 0)
         self.model = gateway()
         self.model.accept_status(control_status(), retained=False, monotonic=0)
-        command = self.model.command(monotonic=0)
+        command = self.model.command(source_authority=True, monotonic=0)
         from custom_components.ufh_heating.client.wire import decode
 
         packet = decode(command, self.model.key)
@@ -103,7 +103,7 @@ class UpdateTests(unittest.TestCase):
                 accepted=packet.sequence,
                 sequence=2,
                 uptime=1500,
-                commissioned=False,
+                operation_enabled=False,
             ),
             retained=False,
             monotonic=0.1,
@@ -232,3 +232,40 @@ class UpdateTests(unittest.TestCase):
         self.client.start(1, self.model, 0.2)
         with self.assertRaises(ValueError):
             self.client.start(1, self.model, 0.3)
+
+
+class OperationTests(UpdateTests):
+    # Reuse the signed transport fixture and its OTA regressions.
+    def test_operation_requires_new_firmware_and_verified_config_boot(self):
+        from custom_components.ufh_heating.client.wire import decode
+
+        with self.assertRaises(ValueError):
+            self.client.start_operation(True, 1, self.model, 0.2)
+        self.client.accept(wire(2, version=(0, 3, 0)), False, 0.2)
+        self.client.start_operation(True, 1, self.model, 0.2)
+        self.assertFalse(any(self.model.enabled))
+        self.client.tick(self.model, 0.2)
+        command = decode(self.client.tick(self.model, 0.3)[0], KEY, MQTT_DOMAIN)
+        self.assertEqual(command.payload, b"\x08\x01\x01")
+        self.client.accept(
+            wire(3, version=(0, 3, 0), phase=3, ack=command.sequence, hold=1), False, 0.4
+        )
+        self.client.tick(self.model, 0.4)
+        self.assertEqual(self.client.job.phase, JobPhase.REBOOT)
+        self.client.accept(
+            wire(1, session=b"T" * 16, version=(0, 3, 0), generation=2, phase=4, hold=1), False, 0.5
+        )
+        confirmation = decode(self.client.tick(self.model, 0.5)[0], KEY, MQTT_DOMAIN)
+        self.assertEqual(
+            confirmation.payload, b"\x04" + Version(0, 3, 0).pack() + struct.pack(">Q", 2)
+        )
+        self.assertTrue(self.client.active)
+        self.client.accept(wire(1, session=b"V" * 16, version=(0, 3, 0), generation=2), False, 0.6)
+        self.client.tick(self.model, 0.6)
+        self.assertEqual(self.client.job.phase, JobPhase.SUCCEEDED)
+
+    def test_operation_cannot_arm_an_unspecified_interface(self):
+        self.client.accept(wire(2, version=(0, 3, 0)), False, 0.2)
+        for enabled, profile in ((True, 0), (1, 1), (True, True), (True, 3)):
+            with self.subTest(enabled=enabled, profile=profile), self.assertRaises(ValueError):
+                self.client.start_operation(enabled, profile, self.model, 0.2)

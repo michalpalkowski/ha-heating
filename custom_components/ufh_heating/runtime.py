@@ -18,6 +18,7 @@ from homeassistant.helpers.event import (
     async_track_state_change_event,
     async_track_state_report_event,
 )
+from homeassistant.helpers.storage import Store
 
 from .client.maintenance import COMMAND_TOPIC, STATUS_TOPIC, JobPhase, Maintenance
 from .client.model import BASE, Gateway
@@ -48,8 +49,11 @@ class HeatingRuntime:
         self._notify_at = 0.0
         self._stopping = False
         self._installing = False
+        self._source_authorized_until = 0.0
         self._job_done = asyncio.Event()
         self._catalog_lock = asyncio.Lock()
+        self._targets = Store(hass, 1, f"ufh_heating.{entry.entry_id}.targets")
+        self._targets_loaded = False
 
     @callback
     def subscribe(self, listener: Callable[[], None]) -> Callable[[], None]:
@@ -83,8 +87,22 @@ class HeatingRuntime:
         return client
 
     async def async_start(self) -> None:
+        saved = await self._targets.async_load()
+        if saved is not None:
+            if (
+                not isinstance(saved, dict)
+                or set(saved) != {"targets"}
+                or not isinstance(saved["targets"], list)
+                or len(saved["targets"]) != 9
+            ):
+                raise ValueError("invalid saved heating targets")
+            for i, value in enumerate(saved["targets"]):
+                if type(value) is not int or not 1000 <= value <= 2800:
+                    raise ValueError("invalid saved target")
+                self.model.target[i] = value
+        self._targets_loaded = True
         self.maintenance = await self.hass.async_add_executor_job(self._prepare)
-        topics = {STATUS_TOPIC, BASE + "/main/status", BASE + "/boiler/state"}
+        topics = {STATUS_TOPIC, BASE + "/main/status"}
         topics.update(
             self.settings.zones[i].report_topic
             for i in self.settings.allowed
@@ -207,13 +225,6 @@ class HeatingRuntime:
                     self.last_error = (
                         "Another control client acknowledged; stop it and reload this integration"
                     )
-            elif message.topic == BASE + "/boiler/state":
-                self.model.source_evidence(
-                    message.payload,
-                    retained=message.retain,
-                    unix_ms=time.time_ns() // 1_000_000,
-                    monotonic=now,
-                )
             else:
                 for index in self.settings.allowed:
                     if (
@@ -261,7 +272,9 @@ class HeatingRuntime:
         if now >= self._next_control:
             self._next_control = now + 1
             if self.maintenance.fresh(1, now) is not None:
-                command = self.model.command(monotonic=now)
+                command = self.model.command(
+                    monotonic=now, source_authority=now < self._source_authorized_until
+                )
                 if command is not None:
                     await self._publish(BASE + "/main/command", command)
             lease = {
@@ -288,13 +301,36 @@ class HeatingRuntime:
             await asyncio.sleep(0.05 if self.maintenance.active else 0.5)
 
     @callback
+    def request_operation(self, enabled: bool, relay_profile: int) -> None:
+        if not self.live or self._stopping:
+            raise HomeAssistantError("Controller unavailable")
+        try:
+            self.maintenance.start_operation(enabled, relay_profile, self.model, time.monotonic())
+        except ValueError as exc:
+            raise HomeAssistantError(str(exc)) from exc
+        self._next_control = 0
+        self.notify()
+
+    @callback
+    def observe_source(self, entity_id: str, authority: bool) -> None:
+        self._source_authorized_until = time.monotonic() + 3 if authority else 0.0
+        state = self.hass.states.get(entity_id)
+        value = state.state if state is not None and state.state in ("on", "off") else "unknown"
+        self.model.observe_source(value, monotonic=time.monotonic())
+
+    @callback
     def set_mode(self, index: int, mode: str) -> None:
         if index not in self.settings.allowed or not self.live:
             raise HomeAssistantError("Controller unavailable or zone not configured")
         if mode != "off" and (
-            self.maintenance.active or not self.model.status or not self.model.status.commissioned
+            self.maintenance.active
+            or not self.model.status
+            or self.model.status.schema != 2
+            or not self.model.status.operation_enabled
         ):
-            raise HomeAssistantError("Heating is blocked by commissioning or maintenance")
+            raise HomeAssistantError(
+                "Enable controller operation first; firmware 0.3.0+ is required"
+            )
         self.model.set_mode(index, mode)
         self._next_control = 0
 
@@ -307,6 +343,8 @@ class HeatingRuntime:
         except ValueError as exc:
             raise HomeAssistantError("Setpoint must be between 10 and 28 °C") from exc
         self._next_control = 0
+        if self._targets_loaded:
+            self._targets.async_delay_save(lambda: {"targets": list(self.model.target)}, 2)
 
     async def async_install(self, node: int, version: str | None, backup: bool) -> None:
         if backup:
@@ -349,6 +387,8 @@ class HeatingRuntime:
 
     async def async_stop(self) -> None:
         self._stopping = True
+        if self._targets_loaded:
+            await self._targets.async_save({"targets": list(self.model.target)})
         self.model.enabled = [False] * 9
         if self._task:
             self._task.cancel()

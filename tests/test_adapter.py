@@ -76,6 +76,7 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         self.addCleanup(self.temp.cleanup)
         self.hass = HomeAssistant(self.temp.name)
         self.entry = MagicMock()
+        self.entry.entry_id = "test-entry"
         self.entry.data = DATA
         self.entry.options = OPTIONS
         self.entry.state = ConfigEntryState.LOADED
@@ -96,20 +97,20 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
             "custom_components.ufh_heating.runtime.mqtt.async_publish", side_effect=publish
         ).start()
 
-    def establish(self, *, commissioned=True, heat=False):
+    def establish(self, *, operation_enabled=True, heat=False):
         now = time.monotonic()
         self.runtime.maintenance.accept(wire(1, session=SESSION), False, now)
         self.runtime.model.accept_status(
-            status(commissioned=commissioned), retained=False, monotonic=now
+            status(operation_enabled=operation_enabled), retained=False, monotonic=now
         )
-        packet = decode(self.runtime.model.command(monotonic=now), KEY)
+        packet = decode(self.runtime.model.command(source_authority=True, monotonic=now), KEY)
         self.runtime.model.accept_status(
             status(
                 client=self.runtime.model.client_session,
                 accepted=packet.sequence,
                 sequence=2,
                 uptime=1500,
-                commissioned=commissioned,
+                operation_enabled=operation_enabled,
                 heat=heat,
             ),
             retained=False,
@@ -119,7 +120,7 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         self.runtime._owned = True
 
     async def test_ha_entities_are_acknowledged_and_unverified_board_cannot_arm(self):
-        self.establish(commissioned=False)
+        self.establish(operation_enabled=False)
         climate = HeatingClimate(self.runtime, 0)
         update = HeatingUpdate(self.runtime, 1)
         loop = HeatingLoop(self.runtime, self.settings.bindings[0])
@@ -144,6 +145,82 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         for invalid in (float("nan"), 29, 9):
             with self.assertRaises(HomeAssistantError):
                 await climate.async_set_temperature(temperature=invalid)
+
+    async def test_targets_survive_unload_without_restoring_active_zone_modes(self):
+        from homeassistant.helpers.storage import Store
+
+        self.establish()
+        self.runtime._targets_loaded = True
+        self.runtime.set_target(0, 23.5)
+        self.runtime.model.enabled[0] = True
+        await self.runtime.async_stop()
+        saved = await Store(self.hass, 1, "ufh_heating.test-entry.targets").async_load()
+        self.assertEqual(saved["targets"][0], 2350)
+        self.assertEqual(set(saved), {"targets"})
+        self.assertFalse(any(self.runtime.model.enabled))
+
+    async def test_source_observation_reads_actual_state_and_has_short_authority_lease(self):
+        self.hass.states.async_set("switch.source", "unavailable")
+        self.runtime.observe_source("switch.source", True)
+        self.assertEqual(self.runtime.model.source, 2)
+        self.assertGreater(self.runtime._source_authorized_until, time.monotonic())
+        self.hass.states.async_set("switch.source", "off")
+        self.runtime.observe_source("switch.source", False)
+        self.assertEqual(self.runtime.model.source, 0)
+        self.assertEqual(self.runtime._source_authorized_until, 0)
+
+    async def test_read_only_user_cannot_enable_and_user_cannot_forge_source(self):
+        from homeassistant.auth.const import GROUP_ID_READ_ONLY, GROUP_ID_USER
+        from homeassistant.core import Context
+
+        # A real entity permission check, independent of admin-only HA services.
+        from homeassistant.helpers import device_registry as dr
+        from homeassistant.helpers import entity_registry as er
+
+        from custom_components.ufh_heating import services
+
+        dr.async_setup(self.hass)
+        await dr.async_load(self.hass, load_empty=True)
+        await er.async_load(self.hass, load_empty=True)
+        registry = er.async_get(self.hass)
+        registry.async_get_or_create(
+            "binary_sensor", "ufh_heating", f"{self.settings.device_id}_operation_enabled"
+        )
+        services.register(self.hass, self.entry)
+        from homeassistant.auth import AuthManager
+        from homeassistant.auth.auth_store import AuthStore
+
+        store = AuthStore(self.hass)
+        await store.async_load()
+        self.hass.auth = AuthManager(self.hass, store, {}, {})
+        reader = await self.hass.auth.async_create_user("Reader", group_ids=[GROUP_ID_READ_ONLY])
+        user = await self.hass.auth.async_create_user("User", group_ids=[GROUP_ID_USER])
+        with self.assertRaises(HomeAssistantError):
+            await self.hass.services.async_call(
+                "ufh_heating",
+                "set_operation",
+                {
+                    "controller_id": self.settings.device_id,
+                    "enabled": True,
+                    "relay_profile": "direct_low_3v3",
+                },
+                blocking=True,
+                context=Context(user_id=reader.id),
+            )
+        with self.assertRaises(HomeAssistantError):
+            await self.hass.services.async_call(
+                "ufh_heating",
+                "report_source",
+                {
+                    "controller_id": self.settings.device_id,
+                    "entity_id": "switch.source",
+                    "authority": True,
+                },
+                blocking=True,
+                context=Context(user_id=user.id),
+            )
+        self.assertEqual(self.runtime._source_authorized_until, 0)
+        services.unregister(self.hass)
 
     async def test_stale_controller_disarms_and_only_publishes_off_lease(self):
         self.establish(heat=True)
@@ -403,7 +480,7 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         self.runtime.settings = settings
         self.runtime.maintenance = Maintenance(MANAGEMENT_KEY, settings.nodes, Path(self.temp.name))
         (Path(self.temp.name) / "main-floor-0.2.1.ufu").write_bytes(sign(image(), 1, signing))
-        self.establish(commissioned=False)
+        self.establish(operation_enabled=False)
         started = asyncio.Event()
         original_start = self.runtime.maintenance.start
 

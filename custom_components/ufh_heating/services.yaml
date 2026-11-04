@@ -1,0 +1,42 @@
+set_operation:
+  name: Enable or disable controller
+  description: Persist the explicit operator permission and relay interface using an authenticated configuration transaction. Does not certify electrical tests.
+  fields:
+    controller_id:
+      name: Controller identity
+      required: true
+      selector:
+        text:
+    enabled:
+      name: Operation enabled
+      required: true
+      selector:
+        boolean:
+    relay_profile:
+      name: Relay interface
+      required: true
+      selector:
+        select:
+          options:
+            - unverified
+            - direct_low_3v3
+            - inverting_buffer
+report_source:
+  name: Report source observation
+  description: System-only coordinator port. Reads the actual HA source entity and grants a short authority lease. User calls are rejected.
+  fields:
+    controller_id:
+      required: true
+      selector:
+        text:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          domain:
+            - switch
+            - binary_sensor
+    authority:
+      required: true
+      selector:
+        boolean:

@@ -5,7 +5,7 @@ procesu wydawania. HA potrzebuje wyłącznie podpisanych plików `.ufu` i public
 klucza weryfikacji — bez kodu Rust, narzędzi provisioningu i klucza podpisującego.
 
 Katalog: `/config/ufh_heating/releases/ID_PARTERU/`. Integracja tworzy go po
-konfiguracji. Nazwy: `main-floor-0.2.1.ufu`, `upper-floor-0.2.1.ufu`.
+konfiguracji. Nazwy: `main-floor-0.3.0.ufu`, `upper-floor-0.3.0.ufu`.
 Każdy plik zawiera manifest UFU1 + kompletny obraz aplikacji ESP32-C6.
 Nie kopiuj surowego `.bin`, bootloadera ani obrazu całego flash.
 
@@ -32,3 +32,7 @@ Pierwszy firmware 0.2.0 wymaga poprawnego bootloadera z rollback i tabeli 4 MB.
 Integracja ich nie instaluje. OTA nie zastępuje odbioru fizycznych testów zaniku
 zasilania. Nie wykonuje zmiany Wi-Fi/brokera ani wypalania eFuse. Jeśli żadna
 zapisana sieć nie działa, użyj prywatnych narzędzi odzyskiwania przez USB.
+
+Migracja 0.2→0.3: pierwszy pakiet deklaruje wyłącznie UFC3 ([3,3]), zgodnie ze
+starym weryfikatorem. Po potwierdzonym OTA jawne `set_operation` zapisuje UFC4.
+Nie trzeba kasować urządzenia, zmieniać bootloadera, kluczy ani Wi-Fi.

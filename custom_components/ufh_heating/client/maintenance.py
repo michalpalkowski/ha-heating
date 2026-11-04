@@ -52,6 +52,11 @@ class DeviceState:
     observed: float
 
 
+class JobKind(StrEnum):
+    FIRMWARE = "firmware"
+    OPERATION = "operation"
+
+
 class JobPhase(StrEnum):
     QUIESCE = "quiesce"
     BEGIN = "begin"
@@ -72,6 +77,7 @@ class Job:
     expected_generation: int | None
     started: float
     original_session: bytes
+    kind: JobKind = JobKind.FIRMWARE
     phase: JobPhase = JobPhase.QUIESCE
     offset: int = 0
     waiting_sequence: int | None = None
@@ -252,6 +258,36 @@ class Maintenance:
         self.request_errors.pop(node, None)
         model.enabled = [False] * 9
 
+    def start_operation(
+        self, enabled: bool, relay_profile: int, model: Gateway, now: float
+    ) -> None:
+        if (
+            type(enabled) is not bool
+            or type(relay_profile) is not int
+            or relay_profile not in (0, 1, 2)
+            or enabled
+            and relay_profile == 0
+        ):
+            raise ValueError("explicit operation and interface required")
+        if self.active:
+            raise ValueError("one maintenance job at a time")
+        state = self.fresh(1, now)
+        if state is None or state.version < Version(0, 3, 0):
+            raise ValueError("firmware 0.3.0+ required")
+        if state.phase != 0 or state.hold:
+            raise ValueError("controller is in maintenance/trial")
+        self.job = Job(
+            1,
+            state.version,
+            b"",
+            bytes((8, int(enabled), relay_profile)),
+            state.generation + 1,
+            now,
+            state.session,
+            kind=JobKind.OPERATION,
+        )
+        model.enabled = [False] * 9
+
     @property
     def active(self) -> bool:
         return self.job is not None and self.job.phase not in (
@@ -306,7 +342,7 @@ class Maintenance:
                 and model.confirmed is not None
                 and not any(z.enabled for z in model.confirmed)
                 and (
-                    not status.commissioned
+                    not status.operation_enabled
                     or status.phase == 0
                     and model.source == 0
                     and now - model.source_at < 3
@@ -369,6 +405,9 @@ class Maintenance:
                     return out
                 job.waiting_sequence = None
                 if job.phase == JobPhase.BEGIN:
+                    if job.kind == JobKind.OPERATION:
+                        job.phase = JobPhase.REBOOT
+                        return out
                     job.phase = JobPhase.STREAM
                 elif job.phase == JobPhase.STREAM:
                     job.offset = state.offset
@@ -382,7 +421,7 @@ class Maintenance:
                 return out
         if job.phase == JobPhase.BEGIN:
             payload = job.begin
-            expected = 0
+            expected = 0 if job.kind == JobKind.FIRMWARE else None
         elif job.phase == JobPhase.STREAM:
             if job.offset == len(job.blob):
                 job.phase = JobPhase.FINISH
@@ -418,11 +457,11 @@ class Maintenance:
             "installed_version": current,
             "latest_version": latest,
             "title": f"Podłogówka · {self.nodes[node].name}",
-            "in_progress": bool(job and self.active),
+            "in_progress": bool(job and job.kind == JobKind.FIRMWARE and self.active),
             "update_percentage": 100
             if job and job.phase == JobPhase.SUCCEEDED
             else round(90 * job.offset / len(job.blob), 1)
-            if job
+            if job and job.blob
             else 0,
         }
         error = (

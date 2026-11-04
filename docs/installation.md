@@ -3,7 +3,7 @@
 ## Wymagania i własność sterowania
 
 Integracja jest klientem istniejącego UFH1. Nie zastępuje firmware ani układów
-zabezpieczeń. Wersja 0.1 obsługuje jednego głównego sterownika na broker, stały
+zabezpieczeń. Wersja 0.2 obsługuje jednego głównego sterownika na broker, stały
 prefiks `heating/house/v1`, dziewięć stref oraz 6 + 8 obiegów. Nie jest uniwersalnym
 sterownikiem dowolnych modułów przekaźnikowych.
 
@@ -81,43 +81,33 @@ pomiaru i nowego event_id. `quality="fault"` wymaga `temperature_centi_c=null`.
 Nie odświeżaj czasu starego raportu. Buforowane, ponowione i przeterminowane
 wiadomości są odrzucane.
 
-## Kocioł: osobna, kontrolowana dzierżawa
+## Kocioł: jeden właściciel i jawna zgoda na źródło
 
-To jawny punkt integracji z instalacją: standardowy termostat domowy sterujący
-kotłem musi oddać uprawnienie do sterowania przed uruchomieniem podłogówki UFH.
-Nie łącz dwóch termostatów, które niezależnie włączają ten sam przekaźnik kotła.
+Koordynator HA przejmuje sterowanie CO wyłącznie po wybraniu trybu strefowego.
+Obserwuje encję `heat_request` UFH, wymaga jej aktualizacji co najwyżej 3 s i
+wyłącza CO przy niedostępności lub przeterminowaniu. Nie uruchamiaj równolegle
+starego regulatora z histerezą temperatury pokoju ani samodzielnej bramki.
 
-UFH publikuje co sekundę `heating/house/v1/boiler/request`:
+Co sekundę koordynator (kontekst systemowy) wywołuje `ufh_heating.report_source`:
+`controller_id`, `entity_id` rzeczywistego przełącznika CO oraz `authority`.
+Integracja sama odczytuje stan encji. Przy AC, ręcznym sterowaniu klimatyzacją,
+wyłączeniu regulatora lub poza sezonem zgoda musi wynosić false.
+`unknown` i `unavailable` nie są potwierdzeniem CO OFF. Nie publikuj stanów
+na MQTT `boiler/state`: nowy klient ich nie konsumuje.
 
-```json
-{"schema":1,"request":"off","expires_at_unix_ms":1700000002500}
-```
+MCU zapewnia kolejność zawory → czas otwierania → CO oraz CO OFF → wybieg →
+zamknięcie. Samo kliknięcie termostatu nie potwierdza grzania ani przepływu.
 
-Automatyzacja kotła musi sprawdzić schemat i termin (najwyżej 3000 ms w przyszłość),
-mieć własne jawne zezwolenie, sprawdzić że poprzedni regulator jest wyłączony,
-oraz wyłączyć przejęte CO po wygaśnięciu dzierżawy najpóźniej po 3 sekundach.
-Restart HA i cofnięcie zezwolenia również odbierają przejęte CO.
-Wbudowane automatyzacje domu mogą nadal korzystać z identycznego kontraktu.
+## Zezwolenie operatora
 
-Na `heating/house/v1/boiler/state` dostarczaj co najwyżej co 1 s, bez retain:
+Na firmware 0.3+ akcja `ufh_heating.set_operation` przyjmuje `controller_id`,
+`enabled` oraz `relay_profile` (`direct_low_3v3` albo `inverting_buffer`).
+Użytkownik musi mieć uprawnienie CONTROL do encji zgody sterownika. Transakcja
+wstrzymuje strefy, czeka na CO OFF i wybieg, zapisuje dziennik, restartuje,
+potwierdza rozruch próbny i dopiero po normalnym rozruchu pokazuje nowy stan.
+Po niej włącz świadomie wybrane strefy. Nastawy temperatur są zapamiętywane.
 
-```json
-{"schema":1,"state":"off","reported_at_unix_ms":1700000000000}
-```
-
-`state` jest `on`, `off` albo `unknown`, i ma opisywać potwierdzony stan
-przełącznika kotła pod kontrolą aktualnego właściciela. Nie dowodzi pracy palnika.
-Bez uprawnienia lub poprawnego stanu raportuj `unknown`. MCU wymaga świeżego
-potwierdzenia, obsługuje kolejność otwarcie zaworów → CO oraz CO OFF → wybieg.
-Sama encja `heat_request` bez dzierżawy i potwierdzeń nie wystarcza.
-
-## Odbiór przed uruchomieniem
-
-1. Potwierdź elektrycznie zasilanie, poziomy wejść, polaryzację i stan przy resecie.
-2. Sprawdź niezależne od CPU odcięcie zasilania zaworów przez watchdog.
-3. Zweryfikuj mapę obiegów, NC, czasy otwarcia, przepływ minimalny i wybieg.
-4. W prywatnym procesie provisioningu zatwierdź profil i odbiór sprzętu.
-5. Przetestuj utratę MQTT/HA/RS485 i wygaśnięcie dzierżawy CO, przy nadzorze.
-6. Dopiero wtedy włącz wybrane termostaty stref.
-
-Integracja nie ustawia flag `commissioned`, `hardware_verified`, `watchdog_wired`.
+`electrical_tested` i `external_cutoff_wired` pozostają osobnymi informacjami
+instalacyjnymi; akcja nie ustawia ich na true i nie wymaga fikcyjnego odbioru.
+Profil wyjść musi odpowiadać rzeczywistemu interfejsowi. Oprogramowanie nie
+zastępuje poprawnego zasilania wejść, doboru izolacji i zabezpieczeń instalacji.

@@ -24,14 +24,15 @@ Integracja nie wymaga zewnętrznej bramki ani własnego konta w chmurze.
 7. W opcjach wybierz zamontowane strefy i przypisz termometry. Przejęcie kotła
    wykonaj osobno według [instrukcji uruchomienia](docs/installation.md).
 
-Wymagane: HA **2026.10.2+**, działająca integracja MQTT, firmware UFH1/UFC3
-**0.2.0+** i zatwierdzony profil sprzętowy przed fizycznym grzaniem.
+Wymagane: HA **2026.10.2+**, działająca integracja MQTT, firmware **0.3.0+** do sterowania; **0.2.0** jest obsługiwane tylko do migracji OTA.
 Najpierw zatrzymaj samodzielną bramkę `bridge`. Nie mogą sterować równocześnie.
 
-Po instalacji strefy są wyłączone. Integracja nie zmienia flag odbioru sprzętu.
-Na płytce z profilem `UNVERIFIED` można sprawdzać połączenie i OTA; grzanie
-pozostaje zablokowane. Tożsamość w kreatorze jest sprawdzana bez wysyłania
-poleceń sterujących.
+Po instalacji strefy są wyłączone. Zgoda operatora `operation_enabled` jest
+osobnym, trwałym ustawieniem sterownika, zmienianym uwierzytelnioną transakcją.
+Nie zmienia informacji o wykonaniu pomiarów elektrycznych ani montażu odcięcia.
+Wybierz jawnie interfejs wyjść (`direct_low_3v3` / `inverting_buffer`) i użyj
+akcji `ufh_heating.set_operation`, następnie włącz wybrane termostaty.
+Panel może udostępniać tę akcję jako zwykły przycisk z potwierdzonym stanem.
 
 ## Co pojawia się w HA
 
@@ -40,7 +41,7 @@ poleceń sterujących.
 | Termostat każdej wybranej strefy | Temperatura aktualna i zadana, OFF/HEAT, potwierdzona praca |
 | Obiegi podłogówki | Żądanie grzania, stan wysterowania GPIO i faza — bez udawania pomiaru przepływu |
 | Żądanie ciepła | Tylko świeże, uwierzytelnione i potwierdzone żądanie sterownika |
-| Diagnostyka | Odbiór sprzętu, faza, błąd, błędy RS485, odrzucone wiadomości, konflikt bramek |
+| Diagnostyka | Zgoda na pracę, niezależne fakty instalacyjne, faza, błąd, błędy RS485, odrzucone wiadomości, konflikt bramek |
 | Aktualizacja firmware | Wersja bieżąca/dostępna, instalacja i postęp dla parteru oraz opcjonalnie piętra |
 
 Strefy mają ogólne nazwy `Zone 1…9`; możesz nadać własne nazwy i pomieszczenia
