@@ -59,7 +59,10 @@ Po zmianie opcji wszystkie żądania grzania są wyłączane.
 Przypisany czujnik HA zasila strefę nowymi zdarzeniami raportowania, również gdy
 wartość się nie zmieniła. `unknown`, `unavailable`, brak jednostki lub błędny
 pomiar natychmiast odbierają ważność poprzedniej próbce. Obsługiwane °C i °F.
-Odczyt istniejący w cache przy starcie nie jest traktowany jako nowy pomiar.
+Przy starcie istniejący odczyt jest kwalifikowany z jego oryginalnym
+`last_reported`: zachowuje rzeczywisty wiek i pozostały czas ważności.
+Wartości odtworzone (`restored`), przeterminowane i błędne nie są przyjmowane.
+Ponowny start ani okresowy tick nie zamieniają starej próbki w nowy pomiar.
 
 Maksymalny wiek pomiaru ustaw w opcjach, 1–900 s. Dobierz go do faktycznej
 częstotliwości raportowania czujnika. Czas raportu HA nie dowodzi świeżości

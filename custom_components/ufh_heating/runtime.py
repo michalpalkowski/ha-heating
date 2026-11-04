@@ -107,12 +107,22 @@ class HeatingRuntime:
                 self._unsubs.append(
                     async_track_state_report_event(self.hass, entities, self._sensor_event)
                 )
+            # Reuse an existing real report with its ORIGINAL timestamp and age.
+            # Subscriptions are registered first, so a concurrent report is not lost.
+            self._prime_sensor_states()
             self._task = self.entry.async_create_background_task(
                 self.hass, self._run(), "UFH control and maintenance"
             )
         except Exception:
             await self.async_stop()
             raise
+
+    @callback
+    def _prime_sensor_states(self) -> None:
+        for index in self.settings.allowed:
+            entity_id = self.settings.sensors[index]
+            if entity_id is not None:
+                self.accept_sensor(index, self.hass.states.get(entity_id))
 
     @callback
     def _sensor_event(self, event: Event) -> None:
@@ -128,9 +138,9 @@ class HeatingRuntime:
 
     @callback
     def accept_sensor(self, index: int, state: State | None) -> None:
-        """Event reports only, never replay the state cache on startup/tick."""
+        """Qualify the report's original timestamp; never renew it from a timer."""
         # Invalid evidence revokes a sample; an identical duplicate cannot renew it.
-        if state is None:
+        if state is None or state.attributes.get("restored") is True:
             self.model.samples[index] = None
             return
         timestamp = int(state.last_reported.timestamp() * 1000)

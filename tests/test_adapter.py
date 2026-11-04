@@ -185,7 +185,7 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(self.runtime.model.status)
         self.assertGreater(self.runtime.rejected, 0)
 
-    async def test_real_reports_refresh_but_cached_startup_is_not_imported(self):
+    async def test_real_reports_keep_original_age_and_duplicates_do_not_refresh(self):
         self.assertIsNone(self.runtime.model.samples[0])
         state = State(
             "sensor.temperature",
@@ -210,6 +210,37 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         )
         self.runtime.accept_sensor(0, old)
         self.assertIsNone(self.runtime.model.samples[0])
+
+    async def test_startup_uses_existing_real_report_with_its_original_age(self):
+        reported = datetime.now(UTC) - timedelta(seconds=60)
+        state = State(
+            "sensor.temperature", "20.5", {"unit_of_measurement": "°C"}, last_reported=reported
+        )
+        with patch.object(type(self.hass.states), "get", return_value=state):
+            self.runtime._prime_sensor_states()
+            sample = self.runtime.model.samples[0]
+            self.assertEqual(sample.temperature, 2050)
+            self.assertEqual(self.runtime.model.last_report[0], int(reported.timestamp() * 1000))
+            self.assertAlmostEqual(sample.expires_monotonic - time.monotonic(), 840, delta=1)
+            self.runtime._prime_sensor_states()
+            self.assertEqual(
+                self.runtime.model.samples[0].expires_monotonic, sample.expires_monotonic
+            )
+
+    async def test_startup_does_not_promote_stale_or_restored_values(self):
+        for attrs, age in (
+            ({"unit_of_measurement": "°C"}, 1000),
+            ({"unit_of_measurement": "°C", "restored": True}, 1),
+        ):
+            state = State(
+                "sensor.temperature",
+                "21",
+                attrs,
+                last_reported=datetime.now(UTC) - timedelta(seconds=age),
+            )
+            with patch.object(type(self.hass.states), "get", return_value=state):
+                self.runtime._prime_sensor_states()
+                self.assertIsNone(self.runtime.model.samples[0])
 
     async def test_diagnostics_do_not_export_config_topics_ids_or_keys(self):
         self.establish()
