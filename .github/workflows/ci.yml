@@ -1,0 +1,24 @@
+name: HA integration
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Pinned lint and formatting
+        run: |
+          python3 -m venv /tmp/ufh-lint
+          /tmp/ufh-lint/bin/pip install ruff==0.14.3
+          /tmp/ufh-lint/bin/ruff check .
+          /tmp/ufh-lint/bin/ruff format --check .
+      - name: Real HA adapter, wire and signed OTA tests
+        run: bash tools/check.sh

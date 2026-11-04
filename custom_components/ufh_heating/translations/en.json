@@ -1,0 +1,84 @@
+{
+  "title": "UFH Heating",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect UFH controller",
+        "description": "Uses the existing HA MQTT broker. Stop the standalone gateway first. No valve or boiler commands are sent during this check.",
+        "data": {
+          "device_id": "Main device ID (32 hex characters)",
+          "control_key": "Control HMAC key (64 hex characters)",
+          "management_key": "Management HMAC key (64 hex characters)",
+          "public_key": "Firmware signing public key (64 hex characters)",
+          "upper_device_id": "Upper device ID (optional)",
+          "upper_public_key": "Upper signing public key (optional)"
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure UFH credentials",
+        "description": "Enter both keys again. Device identity cannot change.",
+        "data": {
+          "device_id": "Main device ID (32 hex characters)",
+          "control_key": "Control HMAC key (64 hex characters)",
+          "management_key": "Management HMAC key (64 hex characters)",
+          "public_key": "Firmware signing public key (64 hex characters)",
+          "upper_device_id": "Upper device ID (optional)",
+          "upper_public_key": "Upper signing public key (optional)"
+        }
+      }
+    },
+    "error": {
+      "invalid_config": "Invalid identity, key, sensor or channel mapping. See the installation guide.",
+      "mqtt_unavailable": "Configure and connect the Home Assistant MQTT integration first.",
+      "cannot_connect": "No matching authenticated control and management reports within 8 seconds. Check device power, MQTT connection and keys."
+    },
+    "abort": {
+      "single_instance_allowed": "This firmware currently supports one main controller per broker.",
+      "already_configured": "This controller is already configured.",
+      "reconfigure_successful": "Configuration updated."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Zones and temperature reports",
+        "description": "No zones are enabled initially. Select fitted zones only. An unassigned temperature sensor uses the timestamped MQTT report contract. Channel arrays must match provisioning. Changing options disarms all zones.",
+        "data": {
+          "zones": "Installed zones",
+          "maximum_age_seconds": "Maximum temperature report age (seconds)",
+          "ground_channels": "Ground loop channels (JSON array)",
+          "upper_channels": "Upper loop channels (JSON array)",
+          "sensor_ground_bathroom": "Zone 1: reference temperature sensor (optional)",
+          "sensor_office": "Zone 2: reference temperature sensor (optional)",
+          "sensor_living": "Zone 3: reference temperature sensor (optional)",
+          "sensor_kitchen_hall_boiler": "Zone 4: reference temperature sensor (optional)",
+          "sensor_wardrobe": "Zone 5: reference temperature sensor (optional)",
+          "sensor_bedroom": "Zone 6: reference temperature sensor (optional)",
+          "sensor_bedroom_right": "Zone 7: reference temperature sensor (optional)",
+          "sensor_bedroom_left": "Zone 8: reference temperature sensor (optional)",
+          "sensor_upper_bathroom_hall": "Zone 9: reference temperature sensor (optional)"
+        }
+      }
+    },
+    "error": {
+      "invalid_config": "Invalid identity, key, sensor or channel mapping. See the installation guide.",
+      "mqtt_unavailable": "Configure and connect the Home Assistant MQTT integration first.",
+      "cannot_connect": "No matching authenticated control and management reports within 8 seconds. Check device power, MQTT connection and keys."
+    }
+  },
+  "selector": {
+    "zones": {
+      "options": {
+        "ground_bathroom": "Zone 1 · ground_bathroom",
+        "office": "Zone 2 · office",
+        "living": "Zone 3 · living",
+        "kitchen_hall_boiler": "Zone 4 · kitchen_hall_boiler",
+        "wardrobe": "Zone 5 · wardrobe",
+        "bedroom": "Zone 6 · bedroom",
+        "bedroom_right": "Zone 7 · bedroom_right",
+        "bedroom_left": "Zone 8 · bedroom_left",
+        "upper_bathroom_hall": "Zone 9 · upper_bathroom_hall"
+      }
+    }
+  }
+}
