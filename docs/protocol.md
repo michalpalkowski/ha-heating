@@ -100,3 +100,14 @@ Subsequent release manifests may declare [3,4] or [4,4]. Out-of-range device
 configurations are rejected by firmware before writing an application.
 Targets persist in HA storage; active zone modes do not survive transport loss,
 restart, options change or maintenance. Each zone must be explicitly re-enabled.
+
+## Commit and scheduling (0.2.1)
+
+Sending Finish (or SetOperation) transitions the job to waiting for reboot
+BEFORE yielding to MQTT publication. An old-session commit ACK can report a
+rejection; it is not required if TCP closes during reset. Success still requires
+a fresh authenticated trial of the exact version/generation, confirmation and a
+distinct normal boot. Random reboot mid-stream remains an error.
+Management ACK/offset/phase changes wake the transport task immediately. The
+0.5 s timeout remains a lease/liveness timer, never a delay between firmware
+blocks. Duplicate status packets do not create duplicate chunk sends.

@@ -360,6 +360,14 @@ class Maintenance:
             if state is None:
                 return out
             if state.session == job.original_session:
+                # Commit ACK is useful for rejection details, but a restart may
+                # close MQTT before it arrives. Only authenticated trial + normal
+                # boots confirm success; never require an ACK from a dead session.
+                if job.waiting_sequence == state.ack:
+                    if state.error:
+                        self.fail(f"Urządzenie odrzuciło operację (kod {state.error})")
+                    else:
+                        job.waiting_sequence = None
                 return out
             if state.version != job.version:
                 self.fail("Urządzenie wróciło do poprzedniej wersji (rollback)")
@@ -368,7 +376,9 @@ class Maintenance:
                 self.fail("Urządzenie odrzuciło konfigurację i wróciło do poprzedniej sieci")
                 return out
             if job.phase == JobPhase.REBOOT and state.phase == 4:
-                job.reboot_session = state.session
+                if job.reboot_session != state.session:
+                    job.reboot_session = state.session
+                    job.waiting_sequence = None  # Old boot ACK cannot confirm a new boot.
                 if job.waiting_sequence is None or now - job.sent_at > 2:
                     seq, wire = self.command(
                         job.node,
@@ -440,6 +450,8 @@ class Maintenance:
         job.waiting_sequence = sequence
         job.waiting_offset = expected
         job.sent_at = now
+        if payload[0] == 3 or job.kind == JobKind.OPERATION:
+            job.phase = JobPhase.REBOOT
         out.append(wire)
         return out
 

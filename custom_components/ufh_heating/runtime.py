@@ -51,6 +51,7 @@ class HeatingRuntime:
         self._installing = False
         self._source_authorized_until = 0.0
         self._job_done = asyncio.Event()
+        self._transport_wake = asyncio.Event()
         self._catalog_lock = asyncio.Lock()
         self._targets = Store(hass, 1, f"ufh_heating.{entry.entry_id}.targets")
         self._targets_loaded = False
@@ -205,7 +206,22 @@ class HeatingRuntime:
         now = time.monotonic()
         try:
             if message.topic == STATUS_TOPIC:
-                self.maintenance.accept(message.payload, message.retain, now)
+                previous = (
+                    self.maintenance.states.get(message.payload[5])
+                    if len(message.payload) > 5
+                    else None
+                )
+                state = self.maintenance.accept(message.payload, message.retain, now)
+
+                def progress(item):
+                    return (
+                        None
+                        if item is None
+                        else (item.session, item.ack, item.phase, item.error, item.offset)
+                    )
+
+                if progress(previous) != progress(state):
+                    self._transport_wake.set()
             elif message.topic == BASE + "/main/status":
                 # The management MAC binds the control session to the configured identity.
                 evidence = self.maintenance.fresh(1, now)
@@ -289,6 +305,7 @@ class HeatingRuntime:
 
     async def _run(self) -> None:
         while not self._stopping:
+            self._transport_wake.clear()
             try:
                 await self.async_tick(time.monotonic())
             except (HomeAssistantError, OSError, ValueError):
@@ -298,7 +315,11 @@ class HeatingRuntime:
                 self.maintenance.disconnected()
                 self.notify()
                 _LOGGER.warning("UFH transport or maintenance failed; zone requests revoked")
-            await asyncio.sleep(0.05 if self.maintenance.active else 0.5)
+            try:
+                async with asyncio.timeout(0.5):
+                    await self._transport_wake.wait()
+            except TimeoutError:
+                pass  # Periodic lease and timeout enforcement, not per-block pacing.
 
     @callback
     def request_operation(self, enabled: bool, relay_profile: int) -> None:
@@ -309,6 +330,7 @@ class HeatingRuntime:
         except ValueError as exc:
             raise HomeAssistantError(str(exc)) from exc
         self._next_control = 0
+        self._transport_wake.set()
         self.notify()
 
     @callback
@@ -373,6 +395,7 @@ class HeatingRuntime:
         except ValueError as exc:
             raise HomeAssistantError("No newer approved release, or controller not ready") from exc
         job = self.maintenance.job
+        self._transport_wake.set()
         self._job_done.clear()
         self.notify()
         try:

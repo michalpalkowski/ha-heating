@@ -191,6 +191,41 @@ class UpdateTests(unittest.TestCase):
         self.client.tick(self.model, now + 0.3)
         self.assertEqual(self.client.job.phase, JobPhase.SUCCEEDED)
 
+    def test_lost_finish_ack_is_confirmed_only_by_trial_and_distinct_normal_boot(self):
+        from custom_components.ufh_heating.client.wire import decode
+
+        self.client.start(1, self.model, 0.2)
+        self.client.tick(self.model, 0.2)
+        job = self.client.job
+        # Simulate all chunk ACKs having arrived, with final commit still to send.
+        job.phase = JobPhase.STREAM
+        job.offset = len(job.blob)
+        finish = decode(self.client.tick(self.model, 0.3)[0], KEY, MQTT_DOMAIN)
+        self.assertEqual(finish.payload, b"\x03")
+        self.assertEqual(job.phase, JobPhase.REBOOT)
+        # No final ACK: the TCP connection closed during the device restart.
+        self.client.accept(
+            wire(1, session=b"T" * 16, version=(0, 2, 1), phase=4, hold=1), False, 0.4
+        )
+        confirmation = decode(self.client.tick(self.model, 0.4)[0], KEY, MQTT_DOMAIN)
+        self.assertEqual(confirmation.payload[0], 4)
+        self.assertTrue(self.client.active)
+        self.client.accept(wire(1, session=b"V" * 16, version=(0, 2, 1)), False, 0.5)
+        self.client.tick(self.model, 0.5)
+        self.assertEqual(job.phase, JobPhase.SUCCEEDED)
+
+    def test_commit_rejection_in_original_session_is_still_explicit(self):
+        self.client.start(1, self.model, 0.2)
+        self.client.tick(self.model, 0.2)
+        job = self.client.job
+        job.phase = JobPhase.STREAM
+        job.offset = len(job.blob)
+        self.client.tick(self.model, 0.3)
+        self.client.accept(wire(2, ack=job.waiting_sequence, error=1), False, 0.4)
+        self.client.tick(self.model, 0.4)
+        self.assertEqual(job.phase, JobPhase.FAILED)
+        self.assertIn("kod 1", job.error)
+
     def test_wrong_offset_device_error_and_disconnect_are_failures_not_success(self):
         self.client.start(1, self.model, 0.2)
         self.client.tick(self.model, 0.2)
@@ -262,6 +297,23 @@ class OperationTests(UpdateTests):
         self.assertTrue(self.client.active)
         self.client.accept(wire(1, session=b"V" * 16, version=(0, 3, 0), generation=2), False, 0.6)
         self.client.tick(self.model, 0.6)
+        self.assertEqual(self.client.job.phase, JobPhase.SUCCEEDED)
+
+    def test_operation_commit_ack_can_be_lost_without_fabricating_success(self):
+        from custom_components.ufh_heating.client.wire import decode
+
+        self.client.accept(wire(2, version=(0, 3, 0)), False, 0.2)
+        self.client.start_operation(True, 1, self.model, 0.2)
+        self.client.tick(self.model, 0.2)
+        self.client.tick(self.model, 0.3)
+        self.client.accept(
+            wire(1, session=b"T" * 16, version=(0, 3, 0), generation=2, phase=4, hold=1), False, 0.4
+        )
+        confirmation = decode(self.client.tick(self.model, 0.4)[0], KEY, MQTT_DOMAIN)
+        self.assertEqual(confirmation.payload[0], 4)
+        self.assertNotEqual(self.client.job.phase, JobPhase.SUCCEEDED)
+        self.client.accept(wire(1, session=b"V" * 16, version=(0, 3, 0), generation=2), False, 0.5)
+        self.client.tick(self.model, 0.5)
         self.assertEqual(self.client.job.phase, JobPhase.SUCCEEDED)
 
     def test_operation_cannot_arm_an_unspecified_interface(self):

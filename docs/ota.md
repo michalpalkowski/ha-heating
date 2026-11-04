@@ -36,3 +36,8 @@ zapisana sieć nie działa, użyj prywatnych narzędzi odzyskiwania przez USB.
 Migracja 0.2→0.3: pierwszy pakiet deklaruje wyłącznie UFC3 ([3,3]), zgodnie ze
 starym weryfikatorem. Po potwierdzonym OTA jawne `set_operation` zapisuje UFC4.
 Nie trzeba kasować urządzenia, zmieniać bootloadera, kluczy ani Wi-Fi.
+
+Klient 0.2.1 obsługuje utratę ostatniego ACK przy zamykaniu połączenia przez
+restartujący sterownik. Po wysłaniu Finish oczekuje na uwierzytelniony rozruch
+próbny tej samej wersji, następnie potwierdza go i wymaga kolejnego normalnego
+rozruchu. Nie odtwarza brakującego ACK ani nie uznaje wysłania pliku za sukces.

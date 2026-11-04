@@ -146,6 +146,18 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(HomeAssistantError):
                 await climate.async_set_temperature(temperature=invalid)
 
+    async def test_ack_progress_wakes_transport_without_polling_delay(self):
+        self.runtime._message(message(STATUS_TOPIC, wire(1)))
+        self.assertTrue(self.runtime._transport_wake.is_set())
+        self.runtime._transport_wake.clear()
+        self.runtime._message(message(STATUS_TOPIC, wire(2, uptime=1500)))
+        self.assertFalse(self.runtime._transport_wake.is_set())
+        self.runtime._message(message(STATUS_TOPIC, wire(3, ack=1, uptime=1600)))
+        self.assertTrue(self.runtime._transport_wake.is_set())
+        self.runtime._transport_wake.clear()
+        self.runtime._message(message(STATUS_TOPIC, wire(4, ack=2, uptime=1700), retain=True))
+        self.assertFalse(self.runtime._transport_wake.is_set())
+
     async def test_targets_survive_unload_without_restoring_active_zone_modes(self):
         from homeassistant.helpers.storage import Store
 
