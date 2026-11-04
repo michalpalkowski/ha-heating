@@ -146,6 +146,27 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(HomeAssistantError):
                 await climate.async_set_temperature(temperature=invalid)
 
+    async def test_mode_errors_distinguish_operation_off_firmware_and_maintenance(self):
+        from dataclasses import replace
+
+        self.establish(operation_enabled=False)
+        with self.assertRaises(HomeAssistantError) as stopped:
+            self.runtime.set_mode(0, "heat")
+        self.assertEqual(stopped.exception.translation_key, "controller_disabled")
+        self.runtime.set_target(0, 23)
+        self.assertEqual(self.runtime.model.target[0], 2300)
+        self.assertFalse(any(self.runtime.model.enabled))
+        self.runtime.model.status = replace(self.runtime.model.status, schema=1)
+        with self.assertRaises(HomeAssistantError) as old_firmware:
+            self.runtime.set_mode(0, "heat")
+        self.assertEqual(old_firmware.exception.translation_key, "firmware_required")
+        self.runtime.maintenance.job = MagicMock()
+        with self.assertRaises(HomeAssistantError) as busy:
+            self.runtime.set_mode(0, "heat")
+        self.assertEqual(busy.exception.translation_key, "maintenance_active")
+        self.runtime.set_mode(0, "off")
+        self.assertFalse(any(self.runtime.model.enabled))
+
     async def test_ack_progress_wakes_transport_without_polling_delay(self):
         self.runtime._message(message(STATUS_TOPIC, wire(1)))
         self.assertTrue(self.runtime._transport_wake.is_set())
@@ -569,6 +590,9 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         self.runtime._message(
             message(STATUS_TOPIC, wire(1, session=b"T" * 16, version=(0, 2, 1), phase=4, hold=1))
         )
+        from test_ota import acknowledged_boot
+
+        acknowledged_boot(self.runtime.model, b"T" * 16, time.monotonic())
         await self.runtime.async_tick(time.monotonic())
         self.assertEqual(outgoing().payload[0], 4)
         self.assertFalse(action.done())

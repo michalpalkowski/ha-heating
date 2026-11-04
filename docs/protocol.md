@@ -111,3 +111,17 @@ distinct normal boot. Random reboot mid-stream remains an error.
 Management ACK/offset/phase changes wake the transport task immediately. The
 0.5 s timeout remains a lease/liveness timer, never a delay between firmware
 blocks. Duplicate status packets do not create duplicate chunk sends.
+
+## Operator feedback (0.2.2)
+
+Temperature targets may be edited while controller operation is OFF. This does
+not grant operating authority or arm a zone. HEAT rejects maintenance, obsolete
+status schema and operation OFF as separate HA translation keys. Setting a
+target never implicitly changes the provisioned relay interface or permission.
+
+Boot confirmation for the main controller additionally requires a live own
+control ACK from THAT boot, all zone requests/output masks OFF, no heat request
+and (when operation is enabled) fresh source OFF plus Idle. A signed management
+trial announcement alone is not readiness: source evidence may still be unknown
+after reconnect. The same quiescence predicate applies before maintenance and
+before confirming a trial. No confirmation is sent early and retried as a bypass.

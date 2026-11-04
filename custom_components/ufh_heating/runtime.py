@@ -22,6 +22,7 @@ from homeassistant.helpers.storage import Store
 
 from .client.maintenance import COMMAND_TOPIC, STATUS_TOPIC, JobPhase, Maintenance
 from .client.model import BASE, Gateway
+from .const import DOMAIN
 from .settings import Settings
 
 if TYPE_CHECKING:
@@ -344,15 +345,19 @@ class HeatingRuntime:
     def set_mode(self, index: int, mode: str) -> None:
         if index not in self.settings.allowed or not self.live:
             raise HomeAssistantError("Controller unavailable or zone not configured")
-        if mode != "off" and (
-            self.maintenance.active
-            or not self.model.status
-            or self.model.status.schema != 2
-            or not self.model.status.operation_enabled
-        ):
-            raise HomeAssistantError(
-                "Enable controller operation first; firmware 0.3.0+ is required"
-            )
+        if mode != "off":
+            if self.maintenance.active:
+                raise HomeAssistantError(
+                    translation_domain=DOMAIN, translation_key="maintenance_active"
+                )
+            if self.model.status is None or self.model.status.schema != 2:
+                raise HomeAssistantError(
+                    translation_domain=DOMAIN, translation_key="firmware_required"
+                )
+            if not self.model.status.operation_enabled:
+                raise HomeAssistantError(
+                    translation_domain=DOMAIN, translation_key="controller_disabled"
+                )
         self.model.set_mode(index, mode)
         self._next_control = 0
 

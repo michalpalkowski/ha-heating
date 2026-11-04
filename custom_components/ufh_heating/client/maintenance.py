@@ -305,6 +305,26 @@ class Maintenance:
         if self.active:
             self.fail("Przerwano połączenie; wynik instalacji wymaga sprawdzenia wersji urządzenia")
 
+    @staticmethod
+    def _control_stopped(model: Gateway, now: float, session: bytes | None = None) -> bool:
+        status = model.status
+        return bool(
+            model.is_live(now)
+            and status
+            and (session is None or model.node_session == session)
+            and not status.ground
+            and not status.upper
+            and not status.heat_request
+            and model.confirmed is not None
+            and not any(zone.enabled for zone in model.confirmed)
+            and (
+                not status.operation_enabled
+                or status.phase == 0
+                and model.source == 0
+                and 0 <= now - model.source_at < 3
+            )
+        )
+
     def tick(self, model: Gateway, now: float) -> list[bytes]:
         out = []
         job = self.job
@@ -332,22 +352,7 @@ class Maintenance:
             return out
         state = self.fresh(job.node, now)
         if job.phase == JobPhase.QUIESCE:
-            status = model.status
-            safe = bool(
-                model.is_live(now)
-                and status
-                and not status.ground
-                and not status.upper
-                and not status.heat_request
-                and model.confirmed is not None
-                and not any(z.enabled for z in model.confirmed)
-                and (
-                    not status.operation_enabled
-                    or status.phase == 0
-                    and model.source == 0
-                    and now - model.source_at < 3
-                )
-            )
+            safe = self._control_stopped(model, now)
             if safe and state is not None:
                 job.phase = JobPhase.BEGIN
             elif now - job.started > 1000:
@@ -373,9 +378,13 @@ class Maintenance:
                 self.fail("Urządzenie wróciło do poprzedniej wersji (rollback)")
                 return out
             if job.expected_generation is not None and state.generation != job.expected_generation:
-                self.fail("Urządzenie odrzuciło konfigurację i wróciło do poprzedniej sieci")
+                self.fail(
+                    "Sterownik wrócił do poprzedniej konfiguracji; ustawienie nie zostało zapisane"
+                )
                 return out
             if job.phase == JobPhase.REBOOT and state.phase == 4:
+                if job.node == 1 and not self._control_stopped(model, now, state.session):
+                    return out
                 if job.reboot_session != state.session:
                     job.reboot_session = state.session
                     job.waiting_sequence = None  # Old boot ACK cannot confirm a new boot.

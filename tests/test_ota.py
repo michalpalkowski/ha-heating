@@ -79,6 +79,33 @@ def wire(
     return Packet(6, 1, session, sequence, uptime, payload).encode(KEY, MQTT_DOMAIN)
 
 
+def acknowledged_boot(model, session, now, *, operation_enabled=False, source="off", phase=0):
+    from test_protocol import KEY as CONTROL_KEY
+
+    from custom_components.ufh_heating.client.wire import decode
+
+    model.accept_status(
+        control_status(session=session, operation_enabled=operation_enabled, phase=phase),
+        retained=False,
+        monotonic=now,
+    )
+    model.observe_source(source, monotonic=now)
+    command = decode(model.command(source_authority=False, monotonic=now), CONTROL_KEY)
+    model.accept_status(
+        control_status(
+            session=session,
+            client=model.client_session,
+            accepted=command.sequence,
+            sequence=2,
+            uptime=1500,
+            operation_enabled=operation_enabled,
+            phase=phase,
+        ),
+        retained=False,
+        monotonic=now,
+    )
+
+
 class UpdateTests(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
@@ -185,6 +212,7 @@ class UpdateTests(unittest.TestCase):
             False,
             now + 0.2,
         )
+        acknowledged_boot(self.model, b"T" * 16, now + 0.2)
         confirmation = decode(self.client.tick(self.model, now + 0.2)[0], KEY, MQTT_DOMAIN)
         self.assertEqual(confirmation.payload[0], 4)
         self.client.accept(wire(1, session=b"V" * 16, version=(0, 2, 1)), False, now + 0.3)
@@ -207,6 +235,7 @@ class UpdateTests(unittest.TestCase):
         self.client.accept(
             wire(1, session=b"T" * 16, version=(0, 2, 1), phase=4, hold=1), False, 0.4
         )
+        acknowledged_boot(self.model, b"T" * 16, 0.4)
         confirmation = decode(self.client.tick(self.model, 0.4)[0], KEY, MQTT_DOMAIN)
         self.assertEqual(confirmation.payload[0], 4)
         self.assertTrue(self.client.active)
@@ -290,6 +319,7 @@ class OperationTests(UpdateTests):
         self.client.accept(
             wire(1, session=b"T" * 16, version=(0, 3, 0), generation=2, phase=4, hold=1), False, 0.5
         )
+        acknowledged_boot(self.model, b"T" * 16, 0.5, operation_enabled=True)
         confirmation = decode(self.client.tick(self.model, 0.5)[0], KEY, MQTT_DOMAIN)
         self.assertEqual(
             confirmation.payload, b"\x04" + Version(0, 3, 0).pack() + struct.pack(">Q", 2)
@@ -309,12 +339,49 @@ class OperationTests(UpdateTests):
         self.client.accept(
             wire(1, session=b"T" * 16, version=(0, 3, 0), generation=2, phase=4, hold=1), False, 0.4
         )
+        acknowledged_boot(self.model, b"T" * 16, 0.4)
         confirmation = decode(self.client.tick(self.model, 0.4)[0], KEY, MQTT_DOMAIN)
         self.assertEqual(confirmation.payload[0], 4)
         self.assertNotEqual(self.client.job.phase, JobPhase.SUCCEEDED)
         self.client.accept(wire(1, session=b"V" * 16, version=(0, 3, 0), generation=2), False, 0.5)
         self.client.tick(self.model, 0.5)
         self.assertEqual(self.client.job.phase, JobPhase.SUCCEEDED)
+
+    def test_trial_confirmation_waits_for_own_control_ack_and_source_off(self):
+        from custom_components.ufh_heating.client.wire import decode
+
+        self.client.accept(wire(2, version=(0, 3, 0)), False, 0.2)
+        self.client.start_operation(True, 1, self.model, 0.2)
+        self.client.tick(self.model, 0.2)
+        self.client.tick(self.model, 0.3)
+        self.client.accept(
+            wire(1, session=b"T" * 16, version=(0, 3, 0), generation=2, phase=4, hold=1), False, 0.4
+        )
+        # Old boot control state is not readiness for this new boot.
+        self.assertEqual(self.client.tick(self.model, 0.4), [])
+        acknowledged_boot(
+            self.model, b"T" * 16, 0.5, operation_enabled=True, source="unknown", phase=3
+        )
+        self.assertEqual(self.client.tick(self.model, 0.5), [])
+        self.model.observe_source("off", monotonic=0.6)
+        # Source OFF alone is insufficient until MCU confirms Idle.
+        self.assertEqual(self.client.tick(self.model, 0.6), [])
+        self.model.accept_status(
+            control_status(
+                session=b"T" * 16,
+                client=self.model.client_session,
+                accepted=self.model.status.accepted_sequence,
+                sequence=3,
+                uptime=1600,
+                operation_enabled=True,
+                phase=0,
+            ),
+            retained=False,
+            monotonic=0.7,
+        )
+        confirmation = decode(self.client.tick(self.model, 0.7)[0], KEY, MQTT_DOMAIN)
+        self.assertEqual(confirmation.payload[0], 4)
+        self.assertTrue(self.client.active)
 
     def test_operation_cannot_arm_an_unspecified_interface(self):
         self.client.accept(wire(2, version=(0, 3, 0)), False, 0.2)

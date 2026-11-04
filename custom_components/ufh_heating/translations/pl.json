@@ -80,5 +80,16 @@
         "upper_bathroom_hall": "Łazienka / korytarz piętra"
       }
     }
+  },
+  "exceptions": {
+    "maintenance_active": {
+      "message": "Sterownik zapisuje ustawienia lub aktualizuje firmware. Poczekaj na zakończenie."
+    },
+    "firmware_required": {
+      "message": "Wymagany firmware sterownika 0.3.0 lub nowszy. Zainstaluj aktualizację urządzenia."
+    },
+    "controller_disabled": {
+      "message": "Sterownik jest wyłączony. Włącz główny przycisk zasilania w nagłówku panelu podłogówki, a następnie włącz strefę."
+    }
   }
 }

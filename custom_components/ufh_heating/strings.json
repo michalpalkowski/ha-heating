@@ -80,5 +80,16 @@
         "upper_bathroom_hall": "Zone 9 \u00b7 upper_bathroom_hall"
       }
     }
+  },
+  "exceptions": {
+    "maintenance_active": {
+      "message": "The controller is saving settings or updating firmware. Wait until it finishes."
+    },
+    "firmware_required": {
+      "message": "Controller firmware 0.3.0 or newer is required. Install its firmware update."
+    },
+    "controller_disabled": {
+      "message": "The controller is switched off. Turn on the main power button in the heating panel header, then enable the zone."
+    }
   }
 }

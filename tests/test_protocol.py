@@ -34,9 +34,11 @@ def status(
     heat=False,
     operation_enabled=True,
     session=SESSION,
+    phase=0,
 ):
     payload = bytearray(60)
     struct.pack_into(">16sQQ", payload, 0, client, accepted, uptime)
+    payload[35] = phase
     payload[34] = int(heat)
     payload[49] = int(operation_enabled)
     payload[56:60] = bytes((2, 0, 1 if operation_enabled else 0, 4))
