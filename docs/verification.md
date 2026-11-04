@@ -1,4 +1,4 @@
-# Verification of 0.2.0
+# Verification of 0.2.1
 
 The host test suite uses the actual Home Assistant 2026.10.2 container, pinned by
 image digest in `tools/check.sh`, with no network, no extra capabilities, read-only
@@ -36,6 +36,12 @@ facts, source-authority denial, retained room-sample expiry on reconnect, signed
 operation journal trial/confirmation, unknown source state and HA user permissions.
 Physical relay switching and hydraulic response require separate observation.
 
-Release gate: 53 tests against the pinned HA 2026.10.2 image, Ruff and the
+Release gate: 59 tests against the pinned HA 2026.10.2 image, Ruff and the
 publication audit excluding private installation values. MCU OTA and relay
 switching are not inferred from these offline checks.
+
+A real-device migration from 0.2.0 to 0.3.0 was completed through the native
+update entity with client 0.2.1. Authenticated trial and distinct normal boot,
+zero device error and fresh control ACKs were observed. An earlier client
+commit-ACK race caused a real rollback and is covered by regression tests.
+This does not certify actuator wiring, hydraulic flow or every power-cut case.
