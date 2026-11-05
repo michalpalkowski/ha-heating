@@ -202,6 +202,102 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.runtime.model.source, 0)
         self.assertEqual(self.runtime._source_authorized_until, 0)
 
+    async def test_control_samples_bound_source_at_publication_without_renewing_owner(self):
+        with patch("custom_components.ufh_heating.runtime.time.monotonic", return_value=1000):
+            self.establish()
+            self.hass.states.async_set("switch.source", "off")
+            self.runtime.observe_source("switch.source", True)
+        owner_until = self.runtime._source_authorized_until
+        with patch("custom_components.ufh_heating.runtime.time.monotonic", return_value=1001.4):
+            self.hass.states.async_set("switch.source", "on")
+            await self.runtime.async_tick(1001.4)
+        sent = [decode(p, KEY) for t, p, _ in self.published if t.endswith("/main/command")][-1]
+        self.assertEqual(sent.payload[135], 1, "Cached OFF must not overwrite current ON")
+        source_until = int.from_bytes(sent.payload[136:144], "big")
+        self.assertEqual(source_until - (sent.deadline - 5000), 3000)
+        self.assertEqual(self.runtime._source_authorized_until, owner_until)
+        for index, value in enumerate(("unavailable", "unknown", "restored", None), start=1):
+            now = 1001.4 + index * 0.5
+            if value is None:
+                self.hass.states.async_remove("switch.source")
+            elif value == "restored":
+                self.hass.states.async_set("switch.source", "off", {"restored": True})
+            else:
+                self.hass.states.async_set("switch.source", value)
+            self.runtime.model.status_at = now
+            self.runtime.maintenance.accept(wire(index + 1, session=SESSION), False, now)
+            self.runtime._next_control = 0
+            with patch("custom_components.ufh_heating.runtime.time.monotonic", return_value=now):
+                await self.runtime.async_tick(now)
+            packet = [decode(p, KEY) for t, p, _ in self.published if t.endswith("/main/command")][
+                -1
+            ]
+            self.assertEqual(packet.payload[135], 2)
+            self.assertEqual(int.from_bytes(packet.payload[136:144], "big"), 0)
+        now = 1003.5
+        self.hass.states.async_set("switch.source", "off")
+        self.runtime.model.status_at = now
+        self.runtime.maintenance.accept(wire(10, session=SESSION), False, now)
+        self.runtime._next_control = 0
+        with patch("custom_components.ufh_heating.runtime.time.monotonic", return_value=now):
+            await self.runtime.async_tick(now)
+        packet = [decode(p, KEY) for t, p, _ in self.published if t.endswith("/main/command")][-1]
+        self.assertEqual(packet.payload[135], 0)
+        self.assertEqual(packet.payload[144], 0, "Polling OFF cannot renew heating authority")
+        self.assertEqual(self.runtime._source_authorized_until, owner_until)
+
+    async def test_slow_catalog_cannot_backdate_the_next_control_observation(self):
+        clock = [1000.0]
+        with patch(
+            "custom_components.ufh_heating.runtime.time.monotonic", side_effect=lambda: clock[0]
+        ):
+            self.establish()
+            self.hass.states.async_set("switch.source", "off")
+            self.runtime.observe_source("switch.source", True)
+
+            async def delayed_catalog(_now):
+                clock[0] += 1.5
+
+            with patch.object(self.runtime, "_refresh_catalog", side_effect=delayed_catalog):
+                await self.runtime.async_tick(1000)
+        packet = [decode(p, KEY) for t, p, _ in self.published if t.endswith("/main/command")][-1]
+        self.assertEqual(packet.deadline - 5000, 3000)
+        self.assertEqual(int.from_bytes(packet.payload[136:144], "big"), 6000)
+        self.assertEqual(self.runtime.model.source_at, 1001.5)
+        self.assertEqual(self.runtime._source_authorized_until, 1003)
+
+    async def test_source_transport_has_receiver_margin_and_bounded_frame_rate(self):
+        with patch("custom_components.ufh_heating.runtime.time.monotonic", return_value=1000):
+            self.establish()
+        self.hass.states.async_set("switch.source", "off")
+        self.runtime._next_catalog = float("inf")
+        self.runtime._next_control = 0
+        sent = []
+        for step in range(81):
+            now = 1000 + step / 8
+            # A current signed ACK may arrive late; it is not a fresh room sample.
+            self.runtime.model.status_at = now
+            self.runtime.maintenance.accept(wire(step + 2, session=SESSION), False, now)
+            with patch("custom_components.ufh_heating.runtime.time.monotonic", return_value=now):
+                if step % 8 == 0:
+                    self.runtime.observe_source("switch.source", False)
+                count = len(self.published)
+                await self.runtime.async_tick(now)
+            for topic, payload, _ in self.published[count:]:
+                if topic.endswith("/main/command"):
+                    sent.append((now, decode(payload, KEY)))
+        self.assertGreater(len(sent), 15)
+        intervals = [b[0] - a[0] for a, b in zip(sent[:-1], sent[1:], strict=True)]
+        self.assertGreaterEqual(min(intervals), 0.5, "ACK storms must not flood controls")
+        self.assertLessEqual(max(intervals), 0.625)
+        for (at, packet), (next_at, _) in zip(sent[:-1], sent[1:], strict=True):
+            source_until = int.from_bytes(packet.payload[136:144], "big")
+            self.assertEqual(packet.payload[135], 0)
+            self.assertEqual(packet.payload[144], 0)
+            # Budget: 750ms clock projection lag + 500ms receive/tick latency.
+            next_receive_uptime = packet.deadline - 5000 + round((next_at - at) * 1000) + 1250
+            self.assertGreater(source_until, next_receive_uptime)
+
     async def test_read_only_user_cannot_enable_and_user_cannot_forge_source(self):
         from homeassistant.auth.const import GROUP_ID_READ_ONLY, GROUP_ID_USER
         from homeassistant.core import Context

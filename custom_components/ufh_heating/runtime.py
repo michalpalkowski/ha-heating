@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from . import HeatingEntry
 
 _LOGGER = logging.getLogger(__name__)
+CONTROL_INTERVAL_SECONDS = 0.5
 
 
 class HeatingRuntime:
@@ -51,6 +52,7 @@ class HeatingRuntime:
         self._stopping = False
         self._installing = False
         self._source_authorized_until = 0.0
+        self._source_entity_id: str | None = None
         self._job_done = asyncio.Event()
         self._transport_wake = asyncio.Event()
         self._catalog_lock = asyncio.Lock()
@@ -287,8 +289,11 @@ class HeatingRuntime:
         for raw in self.maintenance.tick(self.model, now):
             await self._publish(COMMAND_TOPIC, raw)
         if now >= self._next_control:
-            self._next_control = now + 1
+            # Catalog/management awaits must not timestamp new evidence in the past.
+            now = time.monotonic()
+            self._next_control = now + CONTROL_INTERVAL_SECONDS
             if self.maintenance.fresh(1, now) is not None:
+                self._sample_source(now)
                 command = self.model.command(
                     monotonic=now, source_authority=now < self._source_authorized_until
                 )
@@ -335,11 +340,22 @@ class HeatingRuntime:
         self.notify()
 
     @callback
+    def _sample_source(self, now: float) -> None:
+        """Sample actual HA state at publication; never renew owner authority."""
+        if self._source_entity_id is None:
+            return
+        state = self.hass.states.get(self._source_entity_id)
+        valid = state is not None and not state.attributes.get("restored", False)
+        value = state.state if valid and state.state in ("on", "off") else "unknown"
+        self.model.observe_source(value, monotonic=now)
+
+    @callback
     def observe_source(self, entity_id: str, authority: bool) -> None:
-        self._source_authorized_until = time.monotonic() + 3 if authority else 0.0
-        state = self.hass.states.get(entity_id)
-        value = state.state if state is not None and state.state in ("on", "off") else "unknown"
-        self.model.observe_source(value, monotonic=time.monotonic())
+        now = time.monotonic()
+        self._source_entity_id = entity_id
+        self._source_authorized_until = now + 3 if authority else 0.0
+        self._sample_source(now)
+        self._transport_wake.set()
 
     @callback
     def set_mode(self, index: int, mode: str) -> None:

@@ -12,7 +12,7 @@ No automatic arming, GPIO bypass or invented watchdog evidence is permitted.
   Ed25519-approved UFU1 packages, one OTA job, trial confirmation and normal boot.
 * `settings.py`: validated immutable entry/options records; no credentials in
   entity state, diagnostics, logs, URLs or examples.
-* `runtime.py`: HA MQTT adapter, one second control lease, bounded status age,
+* `runtime.py`: HA MQTT adapter, 0.5-second control cadence, bounded status age,
   asynchronous executor for filesystem/crypto work, entity notifications.
 * Platforms present acknowledged state. A UI request is not device confirmation.
 
@@ -125,3 +125,17 @@ and (when operation is enabled) fresh source OFF plus Idle. A signed management
 trial announcement alone is not readiness: source evidence may still be unknown
 after reconnect. The same quiescence predicate applies before maintenance and
 before confirming a trial. No confirmation is sent early and retried as a bypass.
+
+## Source evidence transport (0.2.3)
+
+`report_source` binds the actual HA switch and grants/revokes the existing
+3-second owner-authority lease. Before each control publication the adapter
+reads that bound entity again; unknown/unavailable/absent is Unknown, never OFF.
+Source evidence gets its own 3-second deadline from that actual read. Reading
+the switch cannot renew the owner's authority, temperature reports or MCU ACKs.
+This remains evidence of an HA switch state, not of a physical flame or pump.
+
+Control refresh is bounded at two frames per second under normal scheduling,
+not one near-expiry cached frame. No TTL, firmware overrun timer, admission,
+boot confirmation or fail-off protection is relaxed. Receiver-side expiry is
+still authoritative; a genuine Unknown/ON interrupts a continuous OFF overrun.

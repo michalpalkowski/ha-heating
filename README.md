@@ -68,3 +68,14 @@ obrazów odbywa się w prywatnym repozytorium firmware.
 
 `bash tools/check.sh` uruchamia testy w przypiętym obrazie HA, bez sieci i bez
 sprzętu. Testy nie wymagają dostępu do prywatnego repozytorium, kluczy ani domu.
+
+## Potwierdzenie CO i wybieg — 0.2.3
+
+Integracja odczytuje rzeczywisty stan przypisanego przełącznika HA przed każdym
+pakietem sterowania, zamiast wysyłać starszy odczyt z kończącą się ważnością.
+Odświeżanie sterowania odbywa się co 0,5 s. Nie zwiększono limitu ważności
+potwierdzenia CO (3 s), zezwoleń właściciela (3 s) ani czasów firmware.
+Odczyt OFF nie przedłuża zezwolenia na grzanie. Stan nieznany, niedostępny,
+odtworzony albo brak encji nie staje się OFF. Po rzeczywistej utracie
+potwierdzenia urządzenie nadal przerywa odliczanie wybiegu.
+To raport stanu przełącznika w HA, nie pomiar pracy palnika lub pompy.
