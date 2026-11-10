@@ -10,6 +10,7 @@ from typing import Any
 from .client.maintenance import Node
 from .client.model import BASE, ZONE_IDS, ZoneConfig
 from .client.presentation import LoopBinding, bindings_from_config
+from .references import SharedReference
 
 
 def hex_bytes(value: object, length: int) -> bytes:
@@ -78,11 +79,8 @@ class Settings:
                     zone, f"Zone {index + 1}", zone, f"{BASE}/temperature/{zone}", age * 1000, 2200
                 )
             )
-        selected_sensors = [
-            sensors[ZONE_IDS.index(z)] for z in installed if sensors[ZONE_IDS.index(z)]
-        ]
-        if len(set(selected_sensors)) != len(selected_sensors):
-            raise ValueError("zones require independent reference sensors")
+        shared = SharedReference.parse(options.get("shared_reference_zones", []), sensors)
+        shared.validate_installed(installed, sensors)
         loops = bindings_from_config(
             {
                 "ground_loop_channels": options.get("ground_channels", list(range(6))),

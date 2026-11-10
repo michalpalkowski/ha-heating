@@ -139,3 +139,24 @@ Control refresh is bounded at two frames per second under normal scheduling,
 not one near-expiry cached frame. No TTL, firmware overrun timer, admission,
 boot confirmation or fail-off protection is relaxed. Receiver-side expiry is
 still authoritative; a genuine Unknown/ON interrupts a continuous OFF overrun.
+
+## Explicit shared room references (client 0.2.4)
+
+`shared_reference_zones` is one optional list of distinct protocol zone IDs.
+An empty list preserves the independent-reference contract. A nonempty list
+requires at least two zones and the same explicit HA temperature entity bound
+to every member. Only declared members may duplicate an installed reference;
+unknown members, missing/mismatched references or undeclared duplicates fail
+configuration validation. This is not an inferred group or a fallback sensor.
+
+The reference declaration and bindings may be saved before upper hardware is
+installed. Installed zone permissions still require the actual upper identity
+and signing key; this option grants no node identity, installed zone, enable,
+source authority or GPIO permission. Changing options retains existing safe
+reloading/disarming behavior. Restart does not restore zone ON.
+
+Each member receives the same original HA report timestamp, value, age limit
+and invalidation. No report is made newer by sharing it. Invalid/stale evidence
+revokes every affected sample. Setpoints, HVAC enable state and firmware loop
+assignments remain independent. Sharing room air never binds a floor surface
+probe to the room thermostat. No firmware or UFH1 wire change is needed.

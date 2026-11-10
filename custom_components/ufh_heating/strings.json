@@ -42,7 +42,7 @@
     "step": {
       "init": {
         "title": "Zones and temperature reports",
-        "description": "No zones are enabled initially. Select fitted zones only. An unassigned temperature sensor uses the timestamped MQTT report contract. Channel arrays must match provisioning. Changing options disarms all zones.",
+        "description": "No zones are enabled initially. Select fitted zones only. An unassigned temperature sensor uses the timestamped MQTT report contract. Channel arrays must match provisioning. Changing options disarms all zones. Shared references require explicitly selecting at least two zones with the same sensor entity. Targets and enables remain independent. Bindings can be prepared before installing upper zones; do not select them as installed without the upper controller.",
         "data": {
           "zones": "Installed zones",
           "maximum_age_seconds": "Maximum temperature report age (seconds)",
@@ -56,7 +56,8 @@
           "sensor_bedroom": "Zone 6: reference temperature sensor (optional)",
           "sensor_bedroom_right": "Zone 7: reference temperature sensor (optional)",
           "sensor_bedroom_left": "Zone 8: reference temperature sensor (optional)",
-          "sensor_upper_bathroom_hall": "Zone 9: reference temperature sensor (optional)"
+          "sensor_upper_bathroom_hall": "Zone 9: reference temperature sensor (optional)",
+          "shared_reference_zones": "Zones explicitly sharing one room sensor"
         }
       }
     },
@@ -69,15 +70,15 @@
   "selector": {
     "zones": {
       "options": {
-        "ground_bathroom": "Zone 1 \u00b7 ground_bathroom",
-        "office": "Zone 2 \u00b7 office",
-        "living": "Zone 3 \u00b7 living",
-        "kitchen_hall_boiler": "Zone 4 \u00b7 kitchen_hall_boiler",
-        "wardrobe": "Zone 5 \u00b7 wardrobe",
-        "bedroom": "Zone 6 \u00b7 bedroom",
-        "bedroom_right": "Zone 7 \u00b7 bedroom_right",
-        "bedroom_left": "Zone 8 \u00b7 bedroom_left",
-        "upper_bathroom_hall": "Zone 9 \u00b7 upper_bathroom_hall"
+        "ground_bathroom": "Zone 1 · ground_bathroom",
+        "office": "Zone 2 · office",
+        "living": "Zone 3 · living",
+        "kitchen_hall_boiler": "Zone 4 · kitchen_hall_boiler",
+        "wardrobe": "Zone 5 · wardrobe",
+        "bedroom": "Zone 6 · bedroom",
+        "bedroom_right": "Zone 7 · bedroom_right",
+        "bedroom_left": "Zone 8 · bedroom_left",
+        "upper_bathroom_hall": "Zone 9 · upper_bathroom_hall"
       }
     }
   },

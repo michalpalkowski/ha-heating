@@ -42,7 +42,7 @@
     "step": {
       "init": {
         "title": "Zones and temperature reports",
-        "description": "No zones are enabled initially. Select fitted zones only. An unassigned temperature sensor uses the timestamped MQTT report contract. Channel arrays must match provisioning. Changing options disarms all zones.",
+        "description": "No zones are enabled initially. Select fitted zones only. An unassigned temperature sensor uses the timestamped MQTT report contract. Channel arrays must match provisioning. Changing options disarms all zones. Shared references require explicitly selecting at least two zones with the same sensor entity. Targets and enables remain independent. Bindings can be prepared before installing upper zones; do not select them as installed without the upper controller.",
         "data": {
           "zones": "Installed zones",
           "maximum_age_seconds": "Maximum temperature report age (seconds)",
@@ -56,7 +56,8 @@
           "sensor_bedroom": "Zone 6: reference temperature sensor (optional)",
           "sensor_bedroom_right": "Zone 7: reference temperature sensor (optional)",
           "sensor_bedroom_left": "Zone 8: reference temperature sensor (optional)",
-          "sensor_upper_bathroom_hall": "Zone 9: reference temperature sensor (optional)"
+          "sensor_upper_bathroom_hall": "Zone 9: reference temperature sensor (optional)",
+          "shared_reference_zones": "Zones explicitly sharing one room sensor"
         }
       }
     },

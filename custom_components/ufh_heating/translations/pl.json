@@ -42,7 +42,7 @@
     "step": {
       "init": {
         "title": "Strefy i pomiary temperatury",
-        "description": "Początkowo wszystkie strefy są wyłączone. Wybierz tylko zamontowane strefy. Brak przypisanego czujnika oznacza raporty MQTT ze znacznikiem czasu. Mapy kanałów muszą zgadzać się z provisioningiem. Zmiana opcji wyłącza żądania grzania.",
+        "description": "Początkowo wszystkie strefy są wyłączone. Wybierz tylko zamontowane strefy. Brak przypisanego czujnika oznacza raporty MQTT ze znacznikiem czasu. Mapy kanałów muszą zgadzać się z provisioningiem. Zmiana opcji wyłącza żądania grzania. Wspólny czujnik wymaga jawnego wybrania co najmniej dwóch stref z tą samą encją. Pomiar jest wspólny, cele i zezwolenia pozostają osobne. Przypisania można przygotować przed instalacją piętra; nie wybieraj go jako zainstalowane bez sterownika.",
         "data": {
           "zones": "Zamontowane strefy",
           "maximum_age_seconds": "Maksymalny wiek pomiaru temperatury (sekundy)",
@@ -56,7 +56,8 @@
           "sensor_bedroom": "Duża sypialnia: czujnik temperatury (opcjonalnie)",
           "sensor_bedroom_right": "Prawa sypialnia: czujnik temperatury (opcjonalnie)",
           "sensor_bedroom_left": "Lewa sypialnia: czujnik temperatury (opcjonalnie)",
-          "sensor_upper_bathroom_hall": "Łazienka / korytarz piętra: czujnik temperatury (opcjonalnie)"
+          "sensor_upper_bathroom_hall": "Łazienka / korytarz piętra: czujnik temperatury (opcjonalnie)",
+          "shared_reference_zones": "Strefy ze wspólnym czujnikiem powietrza"
         }
       }
     },

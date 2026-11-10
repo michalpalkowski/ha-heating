@@ -69,12 +69,78 @@ class SettingsTests(unittest.TestCase):
             with self.subTest(options=options), self.assertRaises(ValueError):
                 Settings.parse(data, options)
 
+    def test_explicit_shared_reference_and_pending_upper_bindings(self):
+        options = {
+            "zones": ["ground_bathroom", "office"],
+            "sensor_ground_bathroom": "sensor.room",
+            "sensor_office": "sensor.room",
+            "shared_reference_zones": ["ground_bathroom", "office"],
+        }
+        shared = Settings.parse(DATA, options)
+        self.assertEqual(shared.sensors[:2], ("sensor.room", "sensor.room"))
+        self.assertEqual(shared.allowed, frozenset({0, 1}))
+        pending = Settings.parse(
+            DATA,
+            {
+                "zones": ["ground_bathroom"],
+                "sensor_wardrobe": "sensor.room",
+                "sensor_bedroom": "sensor.room",
+                "shared_reference_zones": ["wardrobe", "bedroom"],
+            },
+        )
+        self.assertEqual(pending.allowed, frozenset({0}))
+        self.assertEqual(len(pending.nodes), 1)
+
+    def test_shared_reference_never_implicitly_authorizes_duplicates(self):
+        base = {
+            "zones": ["ground_bathroom", "office"],
+            "sensor_ground_bathroom": "sensor.room",
+            "sensor_office": "sensor.room",
+        }
+        for group in (
+            None,
+            True,
+            "office",
+            ["office"],
+            ["office", "office"],
+            ["office", "unknown"],
+            [["office"], "ground_bathroom"],
+            ["ground_bathroom", "living"],
+        ):
+            with self.subTest(group=group), self.assertRaises(ValueError):
+                Settings.parse(DATA, {**base, "shared_reference_zones": group})
+        with self.assertRaises(ValueError):
+            Settings.parse(
+                DATA,
+                {
+                    **base,
+                    "shared_reference_zones": ["ground_bathroom", "office"],
+                    "sensor_office": "sensor.other",
+                },
+            )
+        with self.assertRaises(ValueError):
+            Settings.parse(
+                DATA,
+                {
+                    **base,
+                    "zones": ["ground_bathroom", "office", "living"],
+                    "sensor_living": "sensor.room",
+                    "shared_reference_zones": ["ground_bathroom", "office"],
+                },
+            )
+
 
 class AdapterTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.hass = HomeAssistant(self.temp.name)
+        from homeassistant.config_entries import ConfigEntries
+        from homeassistant.helpers import frame
+
+        frame.async_setup(self.hass)
+        self.hass.config_entries = ConfigEntries(self.hass, {})
+        await self.hass.config_entries.async_initialize()
         self.entry = MagicMock()
         self.entry.entry_id = "test-entry"
         self.entry.data = DATA
@@ -417,6 +483,34 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         self.runtime.accept_sensor(0, old)
         self.assertIsNone(self.runtime.model.samples[0])
 
+    async def test_shared_report_preserves_age_and_invalidates_both_zones(self):
+        from homeassistant.core import Event
+
+        options = {
+            "zones": ["ground_bathroom", "office"],
+            "sensor_ground_bathroom": "sensor.room",
+            "sensor_office": "sensor.room",
+            "shared_reference_zones": ["ground_bathroom", "office"],
+        }
+        runtime = HeatingRuntime(self.hass, self.entry, Settings.parse(DATA, options))
+        reported = datetime.now(UTC) - timedelta(seconds=60)
+        state = State("sensor.room", "20.25", {"unit_of_measurement": "°C"}, last_reported=reported)
+        runtime._sensor_event(
+            Event("state_changed", {"entity_id": "sensor.room", "new_state": state})
+        )
+        for index in (0, 1):
+            self.assertEqual(runtime.model.samples[index].temperature, 2025)
+            self.assertEqual(runtime.model.last_report[index], int(reported.timestamp() * 1000))
+            self.assertFalse(runtime.model.enabled[index])
+        runtime._sensor_event(
+            Event(
+                "state_changed",
+                {"entity_id": "sensor.room", "new_state": State("sensor.room", "unavailable")},
+            )
+        )
+        self.assertIsNone(runtime.model.samples[0])
+        self.assertIsNone(runtime.model.samples[1])
+
     async def test_startup_uses_existing_real_report_with_its_original_age(self):
         reported = datetime.now(UTC) - timedelta(seconds=60)
         state = State(
@@ -524,7 +618,7 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         import os
         from types import MappingProxyType
 
-        from homeassistant.config_entries import ConfigEntries, ConfigEntry
+        from homeassistant.config_entries import ConfigEntry
         from homeassistant.helpers import device_registry as dr
         from homeassistant.helpers import entity_registry as er
         from homeassistant.setup import async_setup_component
@@ -533,7 +627,6 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         from homeassistant import loader
 
         loader.async_setup(self.hass)
-        self.hass.config_entries = ConfigEntries(self.hass, {})
         self.hass.config.components.add("mqtt")
         dr.async_setup(self.hass)
         await dr.async_load(self.hass, load_empty=True)

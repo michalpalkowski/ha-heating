@@ -114,6 +114,15 @@ class HeatingOptionsFlow(OptionsFlow):
             schema[marker] = selector.EntitySelector(
                 selector.EntitySelectorConfig(domain="sensor", device_class="temperature")
             )
+        schema[
+            vol.Optional(
+                "shared_reference_zones", default=options.get("shared_reference_zones", [])
+            )
+        ] = selector.SelectSelector(
+            selector.SelectSelectorConfig(
+                options=list(ZONE_IDS), multiple=True, translation_key="zones"
+            )
+        )
         # Explicit optional permutations; do not guess changes to provisioned pins.
         for floor, count in (("ground", 6), ("upper", 8)):
             key = f"{floor}_channels"
