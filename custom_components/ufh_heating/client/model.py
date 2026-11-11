@@ -232,9 +232,14 @@ class Gateway:
                     del self.pending[sequence]
         return state
 
-    def command(self, *, monotonic: float, source_authority: bool = False) -> bytes | None:
+    def command(
+        self, *, monotonic: float, source_authority: bool = False, mapping_verified: bool = True
+    ) -> bytes | None:
         if self.status is None or self.node_session is None or monotonic - self.status_at > 3:
             return None
+        if not mapping_verified:
+            self.enabled = [False] * 9
+            source_authority = False
         uptime = self.status.uptime_ms + int((monotonic - self.status_at) * 1000)
         zones = []
         for index, _cfg in enumerate(self.config):

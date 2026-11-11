@@ -22,6 +22,7 @@ from homeassistant.helpers.storage import Store
 
 from .client.maintenance import COMMAND_TOPIC, STATUS_TOPIC, JobPhase, Maintenance
 from .client.model import BASE, Gateway
+from .client.releases import Version
 from .const import DOMAIN
 from .settings import Settings
 
@@ -73,6 +74,15 @@ class HeatingRuntime:
         for listener in tuple(self._listeners):
             listener()
 
+    def mapping_matches(self, now: float) -> bool:
+        evidence = self.maintenance.fresh(1, now)
+        if evidence is None:
+            return False
+        # Explicit legacy protocol compatibility; new firmware always proves its map.
+        if evidence.version < Version(0, 4, 1):
+            return True
+        return evidence.mapping_fingerprint == self.settings.mapping_fingerprint
+
     @property
     def live(self) -> bool:
         state = self.maintenance.fresh(1, time.monotonic())
@@ -82,6 +92,7 @@ class HeatingRuntime:
             and state
             and state.session == self.model.node_session
             and self.model.is_live(time.monotonic())
+            and self.mapping_matches(time.monotonic())
         )
 
     def _prepare(self) -> Maintenance:
@@ -297,7 +308,9 @@ class HeatingRuntime:
             if self.maintenance.fresh(1, now) is not None:
                 self._sample_source(now)
                 command = self.model.command(
-                    monotonic=now, source_authority=now < self._source_authorized_until
+                    monotonic=now,
+                    source_authority=now < self._source_authorized_until,
+                    mapping_verified=self.mapping_matches(now),
                 )
                 if command is not None:
                     await self._publish(BASE + "/main/command", command)

@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .client.maintenance import Node
+from .client.mapping import mapping_fingerprint
 from .client.model import BASE, ZONE_IDS, ZoneConfig
 from .client.presentation import LoopBinding, bindings_from_config
 from .client.topology import Floor
@@ -34,6 +35,7 @@ class Settings:
     sensors: tuple[str | None, ...]
     bindings: tuple[LoopBinding, ...]
     primary_floor: Floor = Floor.GROUND
+    mapping_fingerprint: bytes = b""
 
     @classmethod
     def parse(cls, data: Mapping[str, Any], options: Mapping[str, Any]) -> Settings:
@@ -103,4 +105,8 @@ class Settings:
             tuple(sensors),
             tuple(b for b in loops if b.zone_index in allowed),
             primary_floor,
+            mapping_fingerprint(
+                options.get("ground_channels", list(range(6))),
+                options.get("upper_channels", list(range(8))),
+            ),
         )

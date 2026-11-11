@@ -182,3 +182,30 @@ single-source validation. Undeclared duplicate installed bindings are rejected.
 The same original report, expiry and invalidation apply to every dependent room.
 Climate attributes expose the actual source entity and other configured rooms
 using it. Shared air references are not floor temperature measurements.
+
+
+# Authenticated loop mapping configuration — firmware 0.4.1
+
+Loop order is independent of relay IN order. Store an explicit permutation for
+six ground loops and eight upper loops in the existing configuration journal.
+Management opcode 9 carries exactly 14 bytes: ground[6], upper[8]. Each is a
+permutation of its fitted channel indexes. Reject any duplicate, out of range,
+wrong length, non-primary role, active trial, busy update or lack of quiescence.
+Only bytes 270..284 and record CRC may change. Identity, keys, network, relay
+interface, facts, authority and all thermal timings must remain byte-identical.
+Use the existing two-slot journal, trial boot and separate normal confirmation.
+
+Firmware 0.4.1 management status is 116 bytes. Existing first 75 bytes retain
+their meaning, byte 75 is 1, bytes 76..84 are zero and bytes 84..116 contain
+SHA256("ufh/loop-mapping/v1\0" || ground[6] || upper[8]). Authenticate the whole
+payload with the existing management HMAC. Legacy 84-byte status with nine
+zero reserved bytes remains explicitly compatible only below firmware 0.4.1;
+it is diagnosed as legacy and proves no mapping. New firmware must report the
+complete extended evidence; no fallback from modern to legacy is accepted.
+
+The HA client compares the fresh authenticated primary fingerprint with its
+explicit configured permutations before authorizing positive control. Unknown,
+stale or different mapping sends only disabled zones and revokes source
+authority. This never blocks all-OFF quiescence or signed OTA. Climate targets
+and visual loop masks always use the same permutations. Editing display options
+alone cannot rewire physical control. No automatic arming after migration.

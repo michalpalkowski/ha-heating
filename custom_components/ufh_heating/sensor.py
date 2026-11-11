@@ -14,7 +14,7 @@ from .entity import HeatingEntity
 async def async_setup_entry(hass, entry, async_add_entities):
     async_add_entities(
         HeatingSensor(entry.runtime_data, kind)
-        for kind in ("phase", "fault", "bus_errors", "rejected", "topology")
+        for kind in ("phase", "fault", "bus_errors", "rejected", "topology", "mapping")
     )
 
 
@@ -32,6 +32,7 @@ class HeatingSensor(HeatingEntity, SensorEntity):
                 "bus_errors": "RS485 errors",
                 "rejected": "Rejected messages",
                 "topology": "Primary physical floor",
+                "mapping": "Loop mapping",
             }[kind],
         )
         if kind in ("phase", "fault"):
@@ -41,12 +42,27 @@ class HeatingSensor(HeatingEntity, SensorEntity):
             self._attr_device_class = SensorDeviceClass.ENUM
             self._attr_options = ["ground", "upper", "mismatch", "no_report"]
 
+        if kind == "mapping":
+            self._attr_device_class = SensorDeviceClass.ENUM
+            self._attr_options = ["verified", "mismatch", "legacy", "no_report"]
+
     @property
     def available(self):
-        return self.kind in ("rejected", "topology") or super().available
+        return self.kind in ("rejected", "topology", "mapping") or super().available
 
     @property
     def native_value(self):
+        if self.kind == "mapping":
+            evidence = self.runtime.maintenance.fresh(1, time.monotonic())
+            if evidence is None:
+                return "no_report"
+            if evidence.mapping_fingerprint is None:
+                return "legacy"
+            return (
+                "verified"
+                if evidence.mapping_fingerprint == self.runtime.settings.mapping_fingerprint
+                else "mismatch"
+            )
         if self.kind == "topology":
             model = self.runtime.model
             if model.status is None or time.monotonic() - model.status_at > 3:

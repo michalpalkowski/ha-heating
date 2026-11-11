@@ -50,6 +50,7 @@ class DeviceState:
     artifact: bytes
     hold: bool
     observed: float
+    mapping_fingerprint: bytes | None = None
 
 
 class JobKind(StrEnum):
@@ -148,8 +149,10 @@ class Maintenance:
         if node is None:
             raise ValueError("unconfigured management node")
         packet = decode(raw, self.key, node.domain)
-        if packet.kind != 6 or len(packet.payload) != STATUS.size:
+        if packet.kind != 6 or len(packet.payload) not in (STATUS.size, STATUS.size + 32):
             raise ValueError("management status schema mismatch")
+        extended = len(packet.payload) == STATUS.size + 32
+        fingerprint = packet.payload[STATUS.size :] if extended else None
         (
             major,
             minor,
@@ -167,16 +170,18 @@ class Maintenance:
             artifact,
             hold,
             reserved,
-        ) = STATUS.unpack(packet.payload)
+        ) = STATUS.unpack(packet.payload[: STATUS.size])
         if (
             identity != node.device_id
+            or (major, minor, patch) >= (0, 4, 1)
+            and not extended
             or generation < 1
             or slot > 1
             or phase > 6
             or error > 12
             or rollback > 1
             or hold > 1
-            or any(reserved)
+            or (reserved != b"\x01" + bytes(8) if extended else any(reserved))
             or offset > total
             or packet.deadline != uptime
         ):
@@ -208,6 +213,7 @@ class Maintenance:
             artifact,
             bool(hold),
             now,
+            fingerprint,
         )
         self.states[node.number] = state
         return state

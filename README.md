@@ -91,3 +91,12 @@ later without changing the sharing list. Original sample age and invalidation
 are preserved. Shared air measurements do not measure each room independently.
 Opposite-floor rooms can be prepared with sensor bindings, but activation still
 requires the real secondary identity, first firmware installation and RS485.
+
+
+Firmware 0.4.1+ reports an authenticated fingerprint of its physical loop map.
+The client compares it with the configured permutations before sending enabled
+zones. Different, missing or stale modern mapping proof revokes requests; the
+**Loop mapping** diagnostic distinguishes verified, mismatch and legacy reports.
+Physical map changes use the dedicated quiescent management transaction and
+confirmed configuration reboot; changing HA display options alone cannot move
+valves. See [protocol contract](docs/protocol.md).
