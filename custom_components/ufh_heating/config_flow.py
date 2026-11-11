@@ -106,6 +106,13 @@ class HeatingOptionsFlow(OptionsFlow):
                 "maximum_age_seconds", default=options.get("maximum_age_seconds", 900)
             ): vol.All(vol.Coerce(int), vol.Range(min=1, max=900)),
         }
+        schema[vol.Optional("primary_floor", default=options.get("primary_floor", "ground"))] = (
+            selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=["ground", "upper"], translation_key="primary_floor"
+                )
+            )
+        )
         for zone in ZONE_IDS:
             key = f"sensor_{zone}"
             marker = (
@@ -123,6 +130,13 @@ class HeatingOptionsFlow(OptionsFlow):
                 options=list(ZONE_IDS), multiple=True, translation_key="zones"
             )
         )
+        for floor, rooms in (("ground", ZONE_IDS[:4]), ("upper", ZONE_IDS[4:])):
+            key = f"shared_{floor}_reference_zones"
+            schema[vol.Optional(key, default=options.get(key, []))] = selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=list(rooms), multiple=True, translation_key="zones"
+                )
+            )
         # Explicit optional permutations; do not guess changes to provisioned pins.
         for floor, count in (("ground", 6), ("upper", 8)):
             key = f"{floor}_channels"

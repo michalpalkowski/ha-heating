@@ -36,7 +36,12 @@ class HeatingClimate(HeatingEntity, ClimateEntity):
 
     def __init__(self, runtime, index):
         self.index = index
-        super().__init__(runtime, f"zone_{index + 1}", f"Zone {index + 1}", 1 if index < 4 else 2)
+        super().__init__(
+            runtime,
+            f"zone_{index + 1}",
+            f"Zone {index + 1}",
+            runtime.settings.primary_floor.node_for_zone(index),
+        )
 
     @property
     def _confirmed(self):
@@ -90,6 +95,15 @@ class HeatingClimate(HeatingEntity, ClimateEntity):
             "temperature_evidence": "ha_report"
             if self.runtime.settings.sensors[self.index]
             else "timestamped_mqtt_report",
+            "temperature_sensor": self.runtime.settings.sensors[self.index],
+            "shared_temperature_zones": [
+                zone.id
+                for i, zone in enumerate(self.runtime.settings.zones)
+                if i != self.index
+                and i in self.runtime.settings.allowed
+                and self.runtime.settings.sensors[self.index] is not None
+                and self.runtime.settings.sensors[i] == self.runtime.settings.sensors[self.index]
+            ],
             "fault_code": status.zone_faults[self.index] if status and self.available else None,
         }
 

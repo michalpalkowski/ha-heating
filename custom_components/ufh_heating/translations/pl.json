@@ -6,24 +6,24 @@
         "title": "Podłącz sterownik ogrzewania",
         "description": "Korzysta z brokera MQTT w HA. Najpierw zatrzymaj osobną bramkę. Sprawdzenie nie wysyła poleceń do zaworów ani kotła.",
         "data": {
-          "device_id": "ID sterownika parteru (32 znaki hex)",
+          "device_id": "ID sterownika głównego MQTT (32 znaki hex)",
           "control_key": "Klucz HMAC sterowania (64 znaki hex)",
           "management_key": "Klucz HMAC zarządzania (64 znaki hex)",
           "public_key": "Publiczny klucz podpisu firmware (64 znaki hex)",
-          "upper_device_id": "ID sterownika piętra (opcjonalnie)",
-          "upper_public_key": "Publiczny klucz podpisu piętra (opcjonalnie)"
+          "upper_device_id": "ID dodatkowego sterownika RS485 (opcjonalnie)",
+          "upper_public_key": "Publiczny klucz podpisu dodatkowego sterownika (opcjonalnie)"
         }
       },
       "reconfigure": {
         "title": "Zmień dane połączenia",
         "description": "Podaj oba klucze ponownie. Tożsamość urządzenia pozostaje stała.",
         "data": {
-          "device_id": "ID sterownika parteru (32 znaki hex)",
+          "device_id": "ID sterownika głównego MQTT (32 znaki hex)",
           "control_key": "Klucz HMAC sterowania (64 znaki hex)",
           "management_key": "Klucz HMAC zarządzania (64 znaki hex)",
           "public_key": "Publiczny klucz podpisu firmware (64 znaki hex)",
-          "upper_device_id": "ID sterownika piętra (opcjonalnie)",
-          "upper_public_key": "Publiczny klucz podpisu piętra (opcjonalnie)"
+          "upper_device_id": "ID dodatkowego sterownika RS485 (opcjonalnie)",
+          "upper_public_key": "Publiczny klucz podpisu dodatkowego sterownika (opcjonalnie)"
         }
       }
     },
@@ -57,7 +57,10 @@
           "sensor_bedroom_right": "Prawa sypialnia: czujnik temperatury (opcjonalnie)",
           "sensor_bedroom_left": "Lewa sypialnia: czujnik temperatury (opcjonalnie)",
           "sensor_upper_bathroom_hall": "Łazienka / korytarz piętra: czujnik temperatury (opcjonalnie)",
-          "shared_reference_zones": "Strefy ze wspólnym czujnikiem powietrza"
+          "shared_reference_zones": "Strefy ze wspólnym czujnikiem powietrza",
+          "primary_floor": "Piętro obsługiwane bezpośrednio przez mastera",
+          "shared_ground_reference_zones": "Strefy parteru ze wspólnym czujnikiem powietrza",
+          "shared_upper_reference_zones": "Strefy piętra ze wspólnym czujnikiem powietrza"
         }
       }
     },
@@ -79,6 +82,12 @@
         "bedroom_right": "Prawa sypialnia",
         "bedroom_left": "Lewa sypialnia",
         "upper_bathroom_hall": "Łazienka / korytarz piętra"
+      }
+    },
+    "primary_floor": {
+      "options": {
+        "ground": "Parter",
+        "upper": "Piętro"
       }
     }
   },

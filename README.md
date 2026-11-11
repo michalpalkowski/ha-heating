@@ -79,3 +79,15 @@ Odczyt OFF nie przedłuża zezwolenia na grzanie. Stan nieznany, niedostępny,
 odtworzony albo brak encji nie staje się OFF. Po rzeczywistej utracie
 potwierdzenia urządzenie nadal przerywa odliczanie wybiegu.
 To raport stanu przełącznika w HA, nie pomiar pracy palnika lub pompy.
+
+
+For an upstairs MQTT primary select **Physical floor: Upper**. Its five local
+rooms need no fictitious RS485 secondary. Authenticated firmware schema 3 must
+agree with that choice; a mismatch is diagnosed and cannot enable heating.
+
+Each room has its own temperature selector. Explicit per-floor sharing lists
+allow several rooms to use one reference sensor. Select a room's new sensor
+later without changing the sharing list. Original sample age and invalidation
+are preserved. Shared air measurements do not measure each room independently.
+Opposite-floor rooms can be prepared with sensor bindings, but activation still
+requires the real secondary identity, first firmware installation and RS485.

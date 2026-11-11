@@ -41,7 +41,7 @@ class HeatingRequest(HeatingEntity, BinarySensorEntity):
             "ufh_role": "heat_request",
             "status_schema": status.schema if status else None,
             "operation_enabled": status.operation_enabled
-            if status and self.available and status.schema == 2
+            if status and self.available and status.schema in (2, 3)
             else None,
         }
 
@@ -105,7 +105,7 @@ class HeatingLoop(HeatingEntity, BinarySensorEntity):
             runtime,
             f"loop_{binding.id}",
             f"Loop {binding.number}",
-            1 if binding.floor == "ground" else 2,
+            runtime.settings.primary_floor.node_for_zone(binding.zone_index),
         )
 
     @property

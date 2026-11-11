@@ -10,7 +10,8 @@ from typing import Any
 from .client.maintenance import Node
 from .client.model import BASE, ZONE_IDS, ZoneConfig
 from .client.presentation import LoopBinding, bindings_from_config
-from .references import SharedReference
+from .client.topology import Floor
+from .references import SharedReference, validate_floor_references
 
 
 def hex_bytes(value: object, length: int) -> bytes:
@@ -32,9 +33,11 @@ class Settings:
     zones: tuple[ZoneConfig, ...]
     sensors: tuple[str | None, ...]
     bindings: tuple[LoopBinding, ...]
+    primary_floor: Floor = Floor.GROUND
 
     @classmethod
     def parse(cls, data: Mapping[str, Any], options: Mapping[str, Any]) -> Settings:
+        primary_floor = Floor(options.get("primary_floor", "ground"))
         identity = hex_bytes(data["device_id"], 16)
         control = hex_bytes(data["control_key"], 32)
         management = hex_bytes(data["management_key"], 32)
@@ -60,8 +63,10 @@ class Settings:
             or any(z not in ZONE_IDS for z in installed)
         ):
             raise ValueError("invalid zone selection")
-        if len(nodes) == 1 and any(ZONE_IDS.index(z) >= 4 for z in installed):
-            raise ValueError("upper zones require the upper device identity")
+        if len(nodes) == 1 and any(
+            primary_floor.node_for_zone(ZONE_IDS.index(z)) == 2 for z in installed
+        ):
+            raise ValueError("remote floor zones require the secondary device identity")
         age = options.get("maximum_age_seconds", 900)
         if type(age) is not int or not 1 <= age <= 900:
             raise ValueError("report age must be 1–900 seconds")
@@ -80,7 +85,7 @@ class Settings:
                 )
             )
         shared = SharedReference.parse(options.get("shared_reference_zones", []), sensors)
-        shared.validate_installed(installed, sensors)
+        validate_floor_references(options, installed, sensors, shared)
         loops = bindings_from_config(
             {
                 "ground_loop_channels": options.get("ground_channels", list(range(6))),
@@ -97,4 +102,5 @@ class Settings:
             tuple(zones),
             tuple(sensors),
             tuple(b for b in loops if b.zone_index in allowed),
+            primary_floor,
         )

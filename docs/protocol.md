@@ -160,3 +160,25 @@ and invalidation. No report is made newer by sharing it. Invalid/stale evidence
 revokes every affected sample. Setpoints, HVAC enable state and firmware loop
 assignments remain independent. Sharing room air never binds a floor surface
 probe to the room thermostat. No firmware or UFH1 wire change is needed.
+
+
+## Physical topology and per-floor shared air references (client 0.3)
+
+Role 1 is the MQTT primary, role 2 its optional RS485 secondary. Neither role
+implies a floor. `primary_floor` is explicit (`ground` or `upper`). Authenticated
+61-byte status schema 3 adds the physical floor at byte 60 (0/1), with byte 56
+set to 3. Legacy schemas 1/2 explicitly mean primary ground. A mismatch revokes
+zone enables and source authority; all-disabled maintenance remains possible.
+Opposite-floor installed zones still require a real secondary identity and key.
+
+`shared_ground_reference_zones` and `shared_upper_reference_zones` explicitly
+authorize sharing a configured HA air sensor among the selected rooms of that
+floor. Each declaration is empty or contains at least two distinct valid room
+IDs of its own floor. Every sensor binding remains explicit: there is no guessed
+sensor, substituted value or inferred availability. A member may later select
+its own sensor without editing the declaration. Two floors cannot implicitly
+share one source. Existing `shared_reference_zones` retains its strict legacy
+single-source validation. Undeclared duplicate installed bindings are rejected.
+The same original report, expiry and invalidation apply to every dependent room.
+Climate attributes expose the actual source entity and other configured rooms
+using it. Shared air references are not floor temperature measurements.

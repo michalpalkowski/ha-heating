@@ -483,6 +483,24 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         self.runtime.accept_sensor(0, old)
         self.assertIsNone(self.runtime.model.samples[0])
 
+    async def test_upper_primary_entities_belong_to_primary_identity(self):
+        settings = Settings.parse(
+            DATA,
+            {"primary_floor": "upper", "zones": ["wardrobe", "bedroom", "upper_bathroom_hall"]},
+        )
+        runtime = HeatingRuntime(self.hass, self.entry, settings)
+        runtime.maintenance = Maintenance(
+            settings.management_key, settings.nodes, Path(self.temp.name)
+        )
+        climate = HeatingClimate(runtime, 8)
+        loop = HeatingLoop(
+            runtime, next(item for item in settings.bindings if item.id == "upper_8")
+        )
+        expected = {("ufh_heating", settings.device_id)}
+        self.assertEqual(climate.device_info["identifiers"], expected)
+        self.assertEqual(loop.device_info["identifiers"], expected)
+        self.assertEqual(len(runtime.maintenance.nodes), 1)
+
     async def test_shared_report_preserves_age_and_invalidates_both_zones(self):
         from homeassistant.core import Event
 

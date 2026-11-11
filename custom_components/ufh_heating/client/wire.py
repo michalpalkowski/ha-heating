@@ -90,13 +90,16 @@ class Status:
     installation_facts: int | None = None
     relay_profile: int | None = None
     config_schema: int = 3
+    primary_floor: str = "ground"
 
     @classmethod
     def decode(cls, raw: bytes) -> Status:
         legacy = len(raw) == 58 and raw[56:] == b"\0\0"
         current = (
-            len(raw) == 60
-            and raw[56] == 2
+            (
+                (len(raw) == 60 and raw[56] == 2)
+                or (len(raw) == 61 and raw[56] == 3 and raw[60] in (0, 1))
+            )
             and raw[57] & ~3 == 0
             and raw[58] <= 2
             and raw[59] in (3, 4)
@@ -126,10 +129,11 @@ class Status:
             bool(raw[49]),
             struct.unpack_from(">I", raw, 50)[0],
             struct.unpack_from(">H", raw, 54)[0],
-            1 if legacy else 2,
+            1 if legacy else raw[56],
             None if legacy else raw[57],
             None if legacy else raw[58],
             3 if legacy else raw[59],
+            "upper" if len(raw) == 61 and raw[60] == 1 else "ground",
         )
 
 

@@ -6,24 +6,24 @@
         "title": "Connect UFH controller",
         "description": "Uses the existing HA MQTT broker. Stop the standalone gateway first. No valve or boiler commands are sent during this check.",
         "data": {
-          "device_id": "Main device ID (32 hex characters)",
+          "device_id": "Primary MQTT device ID (32 hex characters)",
           "control_key": "Control HMAC key (64 hex characters)",
           "management_key": "Management HMAC key (64 hex characters)",
           "public_key": "Firmware signing public key (64 hex characters)",
-          "upper_device_id": "Upper device ID (optional)",
-          "upper_public_key": "Upper signing public key (optional)"
+          "upper_device_id": "Secondary RS485 device ID (optional)",
+          "upper_public_key": "Secondary signing public key (optional)"
         }
       },
       "reconfigure": {
         "title": "Reconfigure UFH credentials",
         "description": "Enter both keys again. Device identity cannot change.",
         "data": {
-          "device_id": "Main device ID (32 hex characters)",
+          "device_id": "Primary MQTT device ID (32 hex characters)",
           "control_key": "Control HMAC key (64 hex characters)",
           "management_key": "Management HMAC key (64 hex characters)",
           "public_key": "Firmware signing public key (64 hex characters)",
-          "upper_device_id": "Upper device ID (optional)",
-          "upper_public_key": "Upper signing public key (optional)"
+          "upper_device_id": "Secondary RS485 device ID (optional)",
+          "upper_public_key": "Secondary signing public key (optional)"
         }
       }
     },
@@ -57,7 +57,10 @@
           "sensor_bedroom_right": "Zone 7: reference temperature sensor (optional)",
           "sensor_bedroom_left": "Zone 8: reference temperature sensor (optional)",
           "sensor_upper_bathroom_hall": "Zone 9: reference temperature sensor (optional)",
-          "shared_reference_zones": "Zones explicitly sharing one room sensor"
+          "shared_reference_zones": "Zones explicitly sharing one room sensor",
+          "primary_floor": "Physical floor served by the MQTT primary",
+          "shared_ground_reference_zones": "Ground rooms allowed to share an air sensor",
+          "shared_upper_reference_zones": "Upper rooms allowed to share an air sensor"
         }
       }
     },
@@ -79,6 +82,12 @@
         "bedroom_right": "Zone 7 · bedroom_right",
         "bedroom_left": "Zone 8 · bedroom_left",
         "upper_bathroom_hall": "Zone 9 · upper_bathroom_hall"
+      }
+    },
+    "primary_floor": {
+      "options": {
+        "ground": "Ground",
+        "upper": "Upper"
       }
     }
   },

@@ -30,7 +30,7 @@ class Node:
 
     @property
     def name(self) -> str:
-        return "Parter" if self.number == 1 else "Piętro"
+        return "Primary" if self.number == 1 else "Secondary"
 
 
 @dataclass(frozen=True, slots=True)

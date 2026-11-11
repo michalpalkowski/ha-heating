@@ -35,7 +35,9 @@ CONTROL_INTERVAL_SECONDS = 0.5
 class HeatingRuntime:
     def __init__(self, hass: HomeAssistant, entry: HeatingEntry, settings: Settings):
         self.hass, self.entry, self.settings = hass, entry, settings
-        self.model = Gateway(settings.control_key, settings.zones)
+        self.model = Gateway(
+            settings.control_key, settings.zones, primary_floor=settings.primary_floor
+        )
         self.directory = Path(hass.config.path("ufh_heating", "releases", settings.device_id))
         self.maintenance: Maintenance
         self._listeners: set[Callable[[], None]] = set()
@@ -366,7 +368,7 @@ class HeatingRuntime:
                 raise HomeAssistantError(
                     translation_domain=DOMAIN, translation_key="maintenance_active"
                 )
-            if self.model.status is None or self.model.status.schema != 2:
+            if self.model.status is None or self.model.status.schema not in (2, 3):
                 raise HomeAssistantError(
                     translation_domain=DOMAIN, translation_key="firmware_required"
                 )

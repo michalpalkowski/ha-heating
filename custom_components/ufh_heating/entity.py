@@ -19,7 +19,7 @@ class HeatingEntity(Entity):
         self._attr_name = name
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, item.device_id.hex())},
-            name="UFH Heating" if node == 1 else "UFH Upper",
+            name="UFH Heating" if node == 1 else "UFH Secondary",
             manufacturer="Heating",
             model="XIAO ESP32-C6 / UFH1",
         )
@@ -27,7 +27,14 @@ class HeatingEntity(Entity):
     @property
     def floorplan_identity(self) -> dict[str, int | str]:
         """Stable, non-secret identity; entity IDs are user-editable in HA."""
-        return {"ufh_protocol": 1, "ufh_controller": self.runtime.settings.device_id}
+        return {
+            "ufh_protocol": 1,
+            "ufh_controller": self.runtime.settings.device_id,
+            "primary_floor": self.runtime.settings.primary_floor,
+            "reported_primary_floor": self.runtime.model.status.primary_floor
+            if self.runtime.model.status
+            else None,
+        }
 
     @property
     def available(self) -> bool:

@@ -7,6 +7,7 @@ import secrets
 from collections import OrderedDict
 from dataclasses import dataclass
 
+from .topology import Floor
 from .wire import Packet, Status, Zone, control_payload, control_payload_v2, decode
 
 BASE = "heating/house/v1"
@@ -59,11 +60,14 @@ class SentControl:
 
 
 class Gateway:
-    def __init__(self, key: bytes, zones: tuple[ZoneConfig, ...]) -> None:
+    def __init__(
+        self, key: bytes, zones: tuple[ZoneConfig, ...], *, primary_floor: Floor = Floor.GROUND
+    ) -> None:
         if len(zones) != 9 or len({z.id for z in zones}) != 9:
             raise ValueError("exactly nine distinct zone slots are required")
         if len({z.report_topic for z in zones}) != 9 or len({z.sensor_id for z in zones}) != 9:
             raise ValueError("each zone requires an explicit independent reference source")
+        self.primary_floor = Floor(primary_floor)
         self.key = key
         self.config = zones
         self.client_session = secrets.token_bytes(16)
@@ -243,7 +247,7 @@ class Gateway:
             )
             zones.append(
                 Zone(
-                    self.enabled[index],
+                    self.enabled[index] and self.status.primary_floor == self.primary_floor,
                     self.target[index],
                     sample.temperature if fresh and sample else None,
                     sample.quality if fresh and sample else (2 if sample else 1),
@@ -255,6 +259,7 @@ class Gateway:
         source_until = (
             uptime + max(0, int((3 - (monotonic - self.source_at)) * 1000)) if source != 2 else 0
         )
+        source_authority = source_authority and self.status.primary_floor == self.primary_floor
         if self.status.schema == 1:
             # Legacy packets are accepted for diagnostics/OTA, never new heating.
             legacy_zones = tuple(
@@ -272,7 +277,7 @@ class Gateway:
             self.key
         )
         self.pending[self.sequence] = SentControl(
-            typed, source_authority if self.status.schema == 2 else False
+            typed, source_authority if self.status.schema in (2, 3) else False
         )
         while len(self.pending) > 32:
             self.pending.popitem(last=False)
@@ -282,6 +287,7 @@ class Gateway:
         state = self.status
         return bool(
             state
+            and state.primary_floor == self.primary_floor
             and monotonic - self.status_at < 2
             and self.confirmed is not None
             and state.client_session == self.client_session
@@ -294,7 +300,7 @@ class Gateway:
             state
             and self.is_live(monotonic)
             and self.confirmed_authority
-            and state.schema == 2
+            and state.schema in (2, 3)
             and state.operation_enabled
             and state.fault == 0
             and state.island_fault == 0
