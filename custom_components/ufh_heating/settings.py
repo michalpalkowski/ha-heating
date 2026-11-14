@@ -70,8 +70,8 @@ class Settings:
         ):
             raise ValueError("remote floor zones require the secondary device identity")
         age = options.get("maximum_age_seconds", 900)
-        if type(age) is not int or not 1 <= age <= 900:
-            raise ValueError("report age must be 1–900 seconds")
+        if type(age) is not int or not 1 <= age <= 2700:
+            raise ValueError("report age must be 1–2700 seconds")
         sensors: list[str | None] = []
         zones: list[ZoneConfig] = []
         for index, zone in enumerate(ZONE_IDS):

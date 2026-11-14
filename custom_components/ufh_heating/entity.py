@@ -14,6 +14,7 @@ class HeatingEntity(Entity):
 
     def __init__(self, runtime: HeatingRuntime, suffix: str, name: str, node: int = 1):
         self.runtime = runtime
+        self.node = node
         item = runtime.maintenance.nodes[node]
         self._attr_unique_id = f"{item.device_id.hex()}_{suffix}"
         self._attr_name = name
@@ -38,7 +39,7 @@ class HeatingEntity(Entity):
 
     @property
     def available(self) -> bool:
-        return self.runtime.live
+        return self.runtime.node_live(self.node)
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()

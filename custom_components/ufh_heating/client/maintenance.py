@@ -51,11 +51,13 @@ class DeviceState:
     hold: bool
     observed: float
     mapping_fingerprint: bytes | None = None
+    secondary_enabled: bool | None = None
 
 
 class JobKind(StrEnum):
     FIRMWARE = "firmware"
     OPERATION = "operation"
+    SECONDARY = "secondary"
 
 
 class JobPhase(StrEnum):
@@ -149,10 +151,15 @@ class Maintenance:
         if node is None:
             raise ValueError("unconfigured management node")
         packet = decode(raw, self.key, node.domain)
-        if packet.kind != 6 or len(packet.payload) not in (STATUS.size, STATUS.size + 32):
+        if packet.kind != 6 or len(packet.payload) not in (
+            STATUS.size,
+            STATUS.size + 32,
+            STATUS.size + 33,
+        ):
             raise ValueError("management status schema mismatch")
-        extended = len(packet.payload) == STATUS.size + 32
-        fingerprint = packet.payload[STATUS.size :] if extended else None
+        extended = len(packet.payload) >= STATUS.size + 32
+        fingerprint = packet.payload[STATUS.size : STATUS.size + 32] if extended else None
+        secondary = packet.payload[-1] if len(packet.payload) == STATUS.size + 33 else None
         (
             major,
             minor,
@@ -173,6 +180,9 @@ class Maintenance:
         ) = STATUS.unpack(packet.payload[: STATUS.size])
         if (
             identity != node.device_id
+            or ((major, minor, patch) >= (0, 5, 0)) != (secondary is not None)
+            or secondary is not None
+            and (secondary > 1 or node.number == 2 and secondary != 0)
             or (major, minor, patch) >= (0, 4, 1)
             and not extended
             or generation < 1
@@ -214,6 +224,7 @@ class Maintenance:
             bool(hold),
             now,
             fingerprint,
+            bool(secondary) if secondary is not None else None,
         )
         self.states[node.number] = state
         return state
@@ -291,6 +302,26 @@ class Maintenance:
             now,
             state.session,
             kind=JobKind.OPERATION,
+        )
+        model.enabled = [False] * 9
+
+    def start_secondary(self, enabled: bool, model: Gateway, now: float) -> None:
+        if type(enabled) is not bool or self.active:
+            raise ValueError("explicit secondary admission and idle maintenance required")
+        state = self.fresh(1, now)
+        if state is None or state.version < Version(0, 5, 0):
+            raise ValueError("firmware 0.5.0+ required for secondary admission")
+        if state.phase != 0 or state.hold:
+            raise ValueError("controller is in maintenance/trial")
+        self.job = Job(
+            1,
+            state.version,
+            b"",
+            bytes((10, int(enabled))),
+            state.generation + 1,
+            now,
+            state.session,
+            kind=JobKind.SECONDARY,
         )
         model.enabled = [False] * 9
 
@@ -411,6 +442,9 @@ class Maintenance:
                 and job.reboot_session is not None
                 and state.session != job.reboot_session
             ):
+                if job.kind == JobKind.SECONDARY and state.secondary_enabled != bool(job.begin[1]):
+                    self.fail("Committed secondary admission does not match the request")
+                    return out
                 job.phase = JobPhase.SUCCEEDED
                 if job.node == 2 and self.fresh(1, now) is not None:
                     out.append(self.command(1, b"\x07", now)[1])
@@ -430,7 +464,7 @@ class Maintenance:
                     return out
                 job.waiting_sequence = None
                 if job.phase == JobPhase.BEGIN:
-                    if job.kind == JobKind.OPERATION:
+                    if job.kind in (JobKind.OPERATION, JobKind.SECONDARY):
                         job.phase = JobPhase.REBOOT
                         return out
                     job.phase = JobPhase.STREAM
@@ -465,7 +499,7 @@ class Maintenance:
         job.waiting_sequence = sequence
         job.waiting_offset = expected
         job.sent_at = now
-        if payload[0] == 3 or job.kind == JobKind.OPERATION:
+        if payload[0] == 3 or job.kind in (JobKind.OPERATION, JobKind.SECONDARY):
             job.phase = JobPhase.REBOOT
         out.append(wire)
         return out

@@ -100,3 +100,18 @@ zones. Different, missing or stale modern mapping proof revokes requests; the
 Physical map changes use the dedicated quiescent management transaction and
 confirmed configuration reboot; changing HA display options alone cannot move
 valves. See [protocol contract](docs/protocol.md).
+
+## Client 0.4 / firmware 0.5
+
+Room sensor report validity is configurable up to **45 minutes**. Original
+report time is retained; this does not increase command, source or connection
+leases. A configured limit above 15 minutes needs firmware 0.5+; older devices
+remain available for signed updates but cannot heat from unsupported samples.
+
+A paired RS485 secondary is unavailable until its configured identity, mapping
+and actual output confirmation are all fresh. An absent idle secondary does not
+stop primary-floor regulation. Reconnecting restores availability, not a cached
+ON request. Native loop entities no longer publish a wall-clock heartbeat in
+their attributes, preventing duplicate history records on every control tick.
+Frontends should use `liveness=ha_adapter` with HA availability and disconnect
+handling; legacy timestamped reports retain their prior contract.

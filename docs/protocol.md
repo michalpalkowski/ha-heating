@@ -209,3 +209,29 @@ stale or different mapping sends only disabled zones and revokes source
 authority. This never blocks all-OFF quiescence or signed OTA. Climate targets
 and visual loop masks always use the same permutations. Editing display options
 alone cannot rewire physical control. No automatic arming after migration.
+
+## Client 0.4 / firmware 0.5: optional secondary and room-report age
+
+Firmware 0.5 management reports have 117 bytes: the unchanged 116-byte mapping
+report followed by the actual optional-secondary-enabled boolean. Reject a wrong
+length for the declared firmware or any nonboolean flag. Opcode 10 admits/revokes
+the secondary only through authenticated quiescent journal/trial/normal commit.
+Secondary availability requires fresh configured identity, mapping proof, primary
+ACK and primary admission. Missing optional hardware must not look like OFF or
+stop the primary's local regulation; positive requests to it are rejected.
+
+The configurable room-report age is 1–2700 seconds. Firmware below 0.5 cannot
+accept a configured limit above 900 seconds: the client exposes incompatibility,
+sends missing measurements and disables those zones until firmware is updated.
+All original report timestamps are preserved; control/source/ACK leases are unchanged.
+
+Native loop entities use `liveness=ha_adapter` and become unavailable as soon as
+adapter evidence expires. Their attributes contain no wall-clock heartbeat, so
+unchanged outputs create no repeated recorder state changes. The live frontend
+must hide native evidence on WebSocket disconnection. Legacy timestamped loop
+reports retain their existing five-second frontend validity contract.
+
+Main status schema 4 is 62 bytes (byte56=4), with the unchanged primary floor
+at60 and a boolean secondary output confirmation at61. Remote entity availability
+requires this fresh primary actuation proof in addition to management identity.
+Management presence alone never confirms a remote output mask.

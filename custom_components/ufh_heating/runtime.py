@@ -95,6 +95,29 @@ class HeatingRuntime:
             and self.mapping_matches(time.monotonic())
         )
 
+    def temperature_limit_ms(self, now: float) -> int:
+        state = self.maintenance.fresh(1, now)
+        return 2_700_000 if state and state.version >= Version(0, 5, 0) else 900_000
+
+    def node_live(self, node: int) -> bool:
+        if not self.live:
+            return False
+        if node == 1:
+            return True
+        now = time.monotonic()
+        primary = self.maintenance.fresh(1, now)
+        secondary = self.maintenance.fresh(2, now)
+        return bool(
+            self.model.status
+            and self.model.status.secondary_live
+            and primary
+            and primary.secondary_enabled is True
+            and secondary
+            and secondary.mapping_fingerprint == self.settings.mapping_fingerprint
+            and secondary.phase == 0
+            and not secondary.hold
+        )
+
     def _prepare(self) -> Maintenance:
         self.directory.mkdir(mode=0o700, parents=True, exist_ok=True)
         if self.directory.is_symlink() or not self.directory.is_dir():
@@ -311,6 +334,8 @@ class HeatingRuntime:
                     monotonic=now,
                     source_authority=now < self._source_authorized_until,
                     mapping_verified=self.mapping_matches(now),
+                    temperature_limit_ms=self.temperature_limit_ms(now),
+                    secondary_ready=self.node_live(2),
                 )
                 if command is not None:
                     await self._publish(BASE + "/main/command", command)
@@ -377,11 +402,19 @@ class HeatingRuntime:
         if index not in self.settings.allowed or not self.live:
             raise HomeAssistantError("Controller unavailable or zone not configured")
         if mode != "off":
+            if not self.node_live(self.settings.primary_floor.node_for_zone(index)):
+                raise HomeAssistantError("Secondary controller unavailable; check RS485 connection")
+            if self.settings.zones[index].maximum_age_ms > self.temperature_limit_ms(
+                time.monotonic()
+            ):
+                raise HomeAssistantError(
+                    translation_domain=DOMAIN, translation_key="firmware_required"
+                )
             if self.maintenance.active:
                 raise HomeAssistantError(
                     translation_domain=DOMAIN, translation_key="maintenance_active"
                 )
-            if self.model.status is None or self.model.status.schema not in (2, 3):
+            if self.model.status is None or self.model.status.schema not in (2, 3, 4):
                 raise HomeAssistantError(
                     translation_domain=DOMAIN, translation_key="firmware_required"
                 )

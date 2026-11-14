@@ -233,7 +233,13 @@ class Gateway:
         return state
 
     def command(
-        self, *, monotonic: float, source_authority: bool = False, mapping_verified: bool = True
+        self,
+        *,
+        monotonic: float,
+        source_authority: bool = False,
+        mapping_verified: bool = True,
+        temperature_limit_ms: int = 900_000,
+        secondary_ready: bool = True,
     ) -> bytes | None:
         if self.status is None or self.node_session is None or monotonic - self.status_at > 3:
             return None
@@ -244,7 +250,11 @@ class Gateway:
         zones = []
         for index, _cfg in enumerate(self.config):
             sample = self.samples[index]
-            fresh = sample is not None and sample.expires_monotonic > monotonic + 0.5
+            compatible = _cfg.maximum_age_ms <= temperature_limit_ms
+            remote_ready = secondary_ready or self.primary_floor.node_for_zone(index) == 1
+            if not compatible or not remote_ready:
+                self.enabled[index] = False
+            fresh = compatible and sample is not None and sample.expires_monotonic > monotonic + 0.5
             until = (
                 uptime + int((sample.expires_monotonic - monotonic) * 1000)
                 if fresh and sample is not None and sample.quality == 0
@@ -282,7 +292,7 @@ class Gateway:
             self.key
         )
         self.pending[self.sequence] = SentControl(
-            typed, source_authority if self.status.schema in (2, 3) else False
+            typed, source_authority if self.status.schema in (2, 3, 4) else False
         )
         while len(self.pending) > 32:
             self.pending.popitem(last=False)
@@ -305,7 +315,7 @@ class Gateway:
             state
             and self.is_live(monotonic)
             and self.confirmed_authority
-            and state.schema in (2, 3)
+            and state.schema in (2, 3, 4)
             and state.operation_enabled
             and state.fault == 0
             and state.island_fault == 0

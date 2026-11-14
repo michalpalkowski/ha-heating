@@ -41,7 +41,7 @@ class HeatingRequest(HeatingEntity, BinarySensorEntity):
             "ufh_role": "heat_request",
             "status_schema": status.schema if status else None,
             "operation_enabled": status.operation_enabled
-            if status and self.available and status.schema in (2, 3)
+            if status and self.available and status.schema in (2, 3, 4)
             else None,
         }
 
@@ -121,4 +121,8 @@ class HeatingLoop(HeatingEntity, BinarySensorEntity):
 
     @property
     def extra_state_attributes(self):
-        return {**self._data, **self.floorplan_identity}
+        # The adapter already revokes availability when authenticated ACKs expire.
+        # A moving wall clock here created a recorder row on every control tick.
+        data = self._data
+        del data["reported_at_unix_ms"]
+        return {**data, **self.floorplan_identity, "liveness": "ha_adapter"}

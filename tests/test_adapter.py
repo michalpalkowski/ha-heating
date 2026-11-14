@@ -203,6 +203,11 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         climate.entity_id = "climate.renamed_room"
         self.assertEqual(climate.extra_state_attributes["zone_id"], "ground_bathroom")
         self.assertEqual(loop.extra_state_attributes["loop_id"], "ground_1")
+        first = loop.extra_state_attributes
+        with patch("custom_components.ufh_heating.binary_sensor.time.time_ns", return_value=0):
+            self.assertEqual(first, loop.extra_state_attributes)
+        self.assertNotIn("reported_at_unix_ms", first)
+        self.assertEqual(first["liveness"], "ha_adapter")
         with self.assertRaises(HomeAssistantError):
             await climate.async_turn_on()
         await climate.async_set_temperature(temperature=23)

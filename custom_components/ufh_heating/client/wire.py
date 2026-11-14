@@ -91,6 +91,7 @@ class Status:
     relay_profile: int | None = None
     config_schema: int = 3
     primary_floor: str = "ground"
+    secondary_live: bool = False
 
     @classmethod
     def decode(cls, raw: bytes) -> Status:
@@ -99,6 +100,7 @@ class Status:
             (
                 (len(raw) == 60 and raw[56] == 2)
                 or (len(raw) == 61 and raw[56] == 3 and raw[60] in (0, 1))
+                or (len(raw) == 62 and raw[56] == 4 and raw[60] in (0, 1) and raw[61] in (0, 1))
             )
             and raw[57] & ~3 == 0
             and raw[58] <= 2
@@ -133,7 +135,8 @@ class Status:
             None if legacy else raw[57],
             None if legacy else raw[58],
             3 if legacy else raw[59],
-            "upper" if len(raw) == 61 and raw[60] == 1 else "ground",
+            "upper" if len(raw) in (61, 62) and raw[60] == 1 else "ground",
+            len(raw) == 62 and raw[61] == 1,
         )
 
 

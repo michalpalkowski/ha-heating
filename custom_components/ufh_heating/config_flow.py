@@ -104,7 +104,7 @@ class HeatingOptionsFlow(OptionsFlow):
             ),
             vol.Required(
                 "maximum_age_seconds", default=options.get("maximum_age_seconds", 900)
-            ): vol.All(vol.Coerce(int), vol.Range(min=1, max=900)),
+            ): vol.All(vol.Coerce(int), vol.Range(min=1, max=2700)),
         }
         schema[vol.Optional("primary_floor", default=options.get("primary_floor", "ground"))] = (
             selector.SelectSelector(
