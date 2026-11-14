@@ -403,12 +403,14 @@ class HeatingRuntime:
             raise HomeAssistantError("Controller unavailable or zone not configured")
         if mode != "off":
             if not self.node_live(self.settings.primary_floor.node_for_zone(index)):
-                raise HomeAssistantError("Secondary controller unavailable; check RS485 connection")
+                raise HomeAssistantError(
+                    translation_domain=DOMAIN, translation_key="secondary_unavailable"
+                )
             if self.settings.zones[index].maximum_age_ms > self.temperature_limit_ms(
                 time.monotonic()
             ):
                 raise HomeAssistantError(
-                    translation_domain=DOMAIN, translation_key="firmware_required"
+                    translation_domain=DOMAIN, translation_key="temperature_age_unsupported"
                 )
             if self.maintenance.active:
                 raise HomeAssistantError(

@@ -26,6 +26,17 @@ class HeatingEntity(Entity):
         )
 
     @property
+    def capability_attributes(self):
+        # HA preserves capabilities when unavailable; live state attributes vanish.
+        # Only immutable identity belongs here, never temperature or output evidence.
+        return {
+            **(super().capability_attributes or {}),
+            "ufh_protocol": 1,
+            "ufh_controller": self.runtime.settings.device_id,
+            "primary_floor": self.runtime.settings.primary_floor,
+        }
+
+    @property
     def floorplan_identity(self) -> dict[str, int | str]:
         """Stable, non-secret identity; entity IDs are user-editable in HA."""
         return {

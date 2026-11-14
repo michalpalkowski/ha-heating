@@ -690,6 +690,18 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
             entities = er.async_entries_for_config_entry(er.async_get(self.hass), entry.entry_id)
             self.assertTrue(any(e.domain == "climate" for e in entities))
             self.assertTrue(any(e.domain == "update" for e in entities))
+            # Exercise real HA state serialization, not the property in isolation.
+            climate_entry = next(e for e in entities if e.domain == "climate")
+            loop_entry = next(e for e in entities if e.unique_id.endswith("loop_ground_1"))
+            climate_state = self.hass.states.get(climate_entry.entity_id)
+            loop_state = self.hass.states.get(loop_entry.entity_id)
+            for state in (climate_state, loop_state):
+                self.assertEqual(state.state, "unavailable")
+                self.assertEqual(state.attributes["ufh_controller"], DATA["device_id"])
+                self.assertEqual(state.attributes["zone_id"], "ground_bathroom")
+                self.assertNotIn("current_temperature", state.attributes)
+                self.assertNotIn("output_energized", state.attributes)
+            self.assertEqual(loop_state.attributes["loop_id"], "ground_1")
             self.hass.states.async_set("sensor.temperature", "20.5", {"unit_of_measurement": "°C"})
             await self.hass.async_block_till_done()
             self.assertEqual(entry.runtime_data.model.samples[0].temperature, 2050)

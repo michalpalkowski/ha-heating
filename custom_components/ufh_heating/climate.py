@@ -44,6 +44,13 @@ class HeatingClimate(HeatingEntity, ClimateEntity):
         )
 
     @property
+    def capability_attributes(self):
+        return {
+            **super().capability_attributes,
+            "zone_id": self.runtime.settings.zones[self.index].id,
+        }
+
+    @property
     def _confirmed(self):
         return (
             self.runtime.model.confirmed[self.index]

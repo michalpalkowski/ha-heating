@@ -235,3 +235,8 @@ Main status schema 4 is 62 bytes (byte56=4), with the unchanged primary floor
 at60 and a boolean secondary output confirmation at61. Remote entity availability
 requires this fresh primary actuation proof in addition to management identity.
 Management presence alone never confirms a remote output mask.
+
+Client 0.4.1 keeps immutable controller/zone/loop identifiers in HA capability
+attributes, which survive `unavailable`. Temperatures, output masks and other
+live evidence remain ordinary state attributes and disappear when unavailable.
+An absent paired floor therefore stays identifiable without inventing live data.

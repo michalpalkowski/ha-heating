@@ -109,6 +109,14 @@ class HeatingLoop(HeatingEntity, BinarySensorEntity):
         )
 
     @property
+    def capability_attributes(self):
+        return {
+            **super().capability_attributes,
+            "zone_id": self.runtime.settings.zones[self.binding.zone_index].id,
+            "loop_id": self.binding.id,
+        }
+
+    @property
     def _data(self):
         return loop_presentation(
             self.runtime.model, self.binding, time.monotonic(), time.time_ns() // 1_000_000

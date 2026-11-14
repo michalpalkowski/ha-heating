@@ -100,6 +100,12 @@
     },
     "controller_disabled": {
       "message": "Sterownik jest wyłączony. Włącz główny przycisk zasilania w nagłówku panelu podłogówki, a następnie włącz strefę."
+    },
+    "secondary_unavailable": {
+      "message": "Brak połączenia ze sterownikiem tej kondygnacji. Sprawdź RS485 i zasilanie."
+    },
+    "temperature_age_unsupported": {
+      "message": "Ważność odczytów dłuższa niż 15 minut wymaga firmware 0.5.0 lub nowszego. Zaktualizuj sterownik."
     }
   }
 }

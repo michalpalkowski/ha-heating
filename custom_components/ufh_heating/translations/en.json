@@ -100,6 +100,12 @@
     },
     "controller_disabled": {
       "message": "The controller is switched off. Turn on the main power button in the heating panel header, then enable the zone."
+    },
+    "secondary_unavailable": {
+      "message": "The controller for this floor is unavailable. Check RS485 and power."
+    },
+    "temperature_age_unsupported": {
+      "message": "Room reports valid for more than 15 minutes require firmware 0.5.0 or newer. Update the controller."
     }
   }
 }

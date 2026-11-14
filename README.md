@@ -115,3 +115,9 @@ ON request. Native loop entities no longer publish a wall-clock heartbeat in
 their attributes, preventing duplicate history records on every control tick.
 Frontends should use `liveness=ha_adapter` with HA availability and disconnect
 handling; legacy timestamped reports retain their prior contract.
+
+Client **0.4.1** also preserves immutable zone/loop identity when HA marks a
+controller unavailable. Panels can distinguish a configured, disconnected floor
+from a floor that was never configured. No stale temperature or output value is
+exposed as live evidence. Missing RS485 and unsupported report-age settings have
+separate translated messages.
