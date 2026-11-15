@@ -102,6 +102,21 @@ class SecondaryTests(unittest.TestCase):
             self.client.states[1] = dataclasses.replace(primary, secondary_enabled=False)
             self.assertFalse(runtime.node_live(2))
 
+    def test_provisioned_peer_map_is_checked_independently_from_primary_correction(self):
+        old = mapping_fingerprint(tuple(range(6)), tuple(reversed(range(8))))
+        data = {
+            **DATA,
+            "upper_device_id": (b"R" * 16).hex(),
+            "upper_public_key": (b"S" * 32).hex(),
+            "secondary_mapping_fingerprint": old.hex(),
+        }
+        settings = Settings.parse(data, {"upper_channels": [5, 6, 7, 4, 3, 2, 1, 0]})
+        self.assertEqual(settings.secondary_mapping_fingerprint, old)
+        self.assertNotEqual(settings.mapping_fingerprint, old)
+        for value in [None, "bad", "0" * 64]:
+            with self.assertRaises(ValueError):
+                Settings.parse({**data, "secondary_mapping_fingerprint": value}, {})
+
 
 class SecondaryWireTests(unittest.TestCase):
     def test_status_requires_explicit_authenticated_output_proof(self):

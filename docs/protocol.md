@@ -246,3 +246,13 @@ Client 0.4.1 keeps immutable controller/zone/loop identifiers in HA capability
 attributes, which survive `unavailable`. Temperatures, output masks and other
 live evidence remain ordinary state attributes and disappear when unavailable.
 An absent paired floor therefore stays identifiable without inventing live data.
+
+
+Client 0.4.4 checks each node against its own provisioned mapping fingerprint.
+The primary uses the configured loop permutations. A separately provisioned
+secondary can carry `secondary_mapping_fingerprint` in entry data (32-byte hex,
+strictly validated); its authenticated status must match that exact value.
+Earlier entries without the field explicitly retain the original shared-map
+contract. Both checks still require current authenticated identity, role,
+admission and actual primary-confirmed secondary liveness. This permits a local
+primary wiring correction without pretending the disconnected peer was reflashed.

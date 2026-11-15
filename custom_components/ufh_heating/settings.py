@@ -36,6 +36,7 @@ class Settings:
     bindings: tuple[LoopBinding, ...]
     primary_floor: Floor = Floor.GROUND
     mapping_fingerprint: bytes = b""
+    secondary_mapping_fingerprint: bytes | None = None
 
     @classmethod
     def parse(cls, data: Mapping[str, Any], options: Mapping[str, Any]) -> Settings:
@@ -94,6 +95,17 @@ class Settings:
                 "upper_loop_channels": options.get("upper_channels", list(range(8))),
             }
         )
+        primary_mapping = mapping_fingerprint(
+            options.get("ground_channels", list(range(6))),
+            options.get("upper_channels", list(range(8))),
+        )
+        # V1 paired installations share one provisioned map. An explicitly
+        # provisioned peer may retain its own map when the primary is corrected.
+        secondary_mapping = (
+            hex_bytes(data["secondary_mapping_fingerprint"], 32)
+            if "secondary_mapping_fingerprint" in data
+            else primary_mapping
+        )
         allowed = frozenset(ZONE_IDS.index(z) for z in installed)
         return cls(
             identity.hex(),
@@ -105,8 +117,6 @@ class Settings:
             tuple(sensors),
             tuple(b for b in loops if b.zone_index in allowed),
             primary_floor,
-            mapping_fingerprint(
-                options.get("ground_channels", list(range(6))),
-                options.get("upper_channels", list(range(8))),
-            ),
+            primary_mapping,
+            secondary_mapping if len(nodes) == 2 else None,
         )

@@ -114,7 +114,7 @@ class HeatingRuntime:
             and primary
             and primary.secondary_enabled is True
             and secondary
-            and secondary.mapping_fingerprint == self.settings.mapping_fingerprint
+            and secondary.mapping_fingerprint == self.settings.secondary_mapping_fingerprint
             and secondary.phase == 0
             and not secondary.hold
         )
