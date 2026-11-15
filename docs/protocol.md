@@ -263,3 +263,11 @@ Concurrent target changes are serialized; storage failure reverts the requested
 value and reports an action error. Targets are loaded before subscribing and
 starting control, using the existing strictly validated nine-target store.
 Zone operating modes are evaluated separately from these persisted temperatures.
+
+
+Client 0.4.6 reads the target store back after saving, because HA Store can log
+WriteError without propagating it. A mismatched persisted value rejects the
+action and restores the previous request. All control-session revocation paths
+also requeue configured zone evaluation, including a new boot status arriving
+before its management identity; the usual identity/ACK/measurement/source guards
+must pass again. A disconnected secondary is likewise reevaluated on return.

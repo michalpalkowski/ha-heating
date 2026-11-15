@@ -334,6 +334,32 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(saved["targets"][0], 2450)
         await self.runtime.async_stop()
 
+    async def test_store_write_error_cannot_be_acknowledged_as_a_saved_target(self):
+        from homeassistant.util.file import WriteError
+
+        self.establish()
+        self.runtime._targets_loaded = True
+        await self.runtime.async_set_target(0, 23)
+        with patch.object(
+            self.runtime._targets,
+            "_async_write_data",
+            new=AsyncMock(side_effect=WriteError("test disk failure")),
+        ):
+            with self.assertRaises(HomeAssistantError):
+                await self.runtime.async_set_target(0, 25)
+        self.assertEqual(self.runtime.model.target[0], 2300)
+        await self.runtime.async_stop()
+
+    async def test_boot_packet_before_management_requeues_regulation_without_arming(self):
+        self.establish()
+        self.runtime._automatic_zones.clear()
+        self.runtime.model.enabled[0] = True
+        self.runtime._message(message(BASE + "/main/status", status(session=b"N" * 16)))
+        self.assertFalse(any(self.runtime.model.enabled))
+        self.assertEqual(self.runtime._automatic_zones, set(self.settings.allowed))
+        self.runtime._start_automatic_regulation(time.monotonic())
+        self.assertFalse(any(self.runtime.model.enabled))
+
     async def test_targets_survive_unload_without_restoring_active_zone_modes(self):
         from homeassistant.helpers.storage import Store
 

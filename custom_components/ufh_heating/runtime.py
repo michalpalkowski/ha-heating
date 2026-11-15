@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from homeassistant.components import mqtt
-from homeassistant.core import Event, HomeAssistant, State, callback
+from homeassistant.core import CoreState, Event, HomeAssistant, State, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import (
     async_track_state_change_event,
@@ -273,7 +273,7 @@ class HeatingRuntime:
                     message.payload, retained=message.retain, monotonic=now
                 )
                 if self.model.node_session != evidence.session:
-                    self.model.disconnected()
+                    self._disconnect_control()
                     raise ValueError("control/management boot mismatch")
                 if previous_session != self.model.node_session:
                     self._automatic_zones = set(self.settings.allowed)
@@ -281,7 +281,7 @@ class HeatingRuntime:
                     self._owned = True
                 elif self._owned and any(state.client_session):
                     self.conflict = True
-                    self.model.disconnected()
+                    self._disconnect_control()
                     self.last_error = (
                         "Another control client acknowledged; stop it and reload this integration"
                     )
@@ -308,6 +308,11 @@ class HeatingRuntime:
         await mqtt.async_publish(self.hass, topic, payload, qos=0, retain=False)
 
     @callback
+    def _disconnect_control(self) -> None:
+        self.model.disconnected()
+        self._automatic_zones = set(self.settings.allowed)
+
+    @callback
     def _start_automatic_regulation(self, now: float) -> None:
         """Evaluate configured zones after a proven session, never restored ON."""
         if (
@@ -319,6 +324,9 @@ class HeatingRuntime:
             or now >= self._source_authorized_until
         ):
             return
+        for index in self.settings.allowed:
+            if not self.node_live(self.settings.primary_floor.node_for_zone(index)):
+                self._automatic_zones.add(index)
         for index in tuple(self._automatic_zones):
             sample = self.model.samples[index]
             if (
@@ -336,18 +344,16 @@ class HeatingRuntime:
         connected = mqtt.is_connected(self.hass)
         if not connected:
             if self._connected:
-                self.model.disconnected()
+                self._disconnect_control()
                 self.maintenance.disconnected()
                 self._owned = False
-                self._automatic_zones = set(self.settings.allowed)
             self._connected = False
             self.notify()
             return
         self._connected = True
         if self.model.status is not None and now - self.model.status_at >= 3:
-            self.model.disconnected()
+            self._disconnect_control()
             self._owned = False
-            self._automatic_zones = set(self.settings.allowed)
         if self.conflict:
             self.notify()
             return  # leases expire; never fight another controller with new commands
@@ -390,9 +396,8 @@ class HeatingRuntime:
             except (HomeAssistantError, OSError, ValueError):
                 # No raw exceptions/payloads in logs; no queued command replay.
                 self.last_error = "Transport or maintenance failure; zone requests revoked"
-                self.model.disconnected()
+                self._disconnect_control()
                 self.maintenance.disconnected()
-                self._automatic_zones = set(self.settings.allowed)
                 self.notify()
                 _LOGGER.warning("UFH transport or maintenance failed; zone requests revoked")
             try:
@@ -468,15 +473,26 @@ class HeatingRuntime:
             previous = list(self.model.target)
             self.set_target(index, target)
             try:
-                await self._targets.async_save({"targets": list(self.model.target)})
-            except OSError as exc:
+                expected = {"targets": list(self.model.target)}
+                await self._targets.async_save(expected)
+                # HA Store logs WriteError instead of propagating it. Verify
+                # the stored value, not merely that its coroutine returned.
+                saved = await Store(self.hass, 1, self._targets.key, read_only=True).async_load()
+                if saved != expected:
+                    raise OSError("Target storage readback differs")
+            except (OSError, ValueError) as exc:
                 self.model.target[:] = previous
                 self._next_control = 0
                 raise HomeAssistantError("Could not save heating target; change reverted") from exc
 
     @callback
     def set_target(self, index: int, target: float) -> None:
-        if self._stopping or index not in self.settings.allowed or not self.live:
+        if (
+            self._stopping
+            or self.hass.state is CoreState.stopping
+            or index not in self.settings.allowed
+            or not self.live
+        ):
             raise HomeAssistantError("Controller unavailable or zone not configured")
         try:
             self.model.set_target(index, str(target))
@@ -560,6 +576,6 @@ class HeatingRuntime:
         for unsubscribe in self._unsubs:
             unsubscribe()
         self._unsubs.clear()
-        self.model.disconnected()
+        self._disconnect_control()
         self._connected = False
         self.notify()
