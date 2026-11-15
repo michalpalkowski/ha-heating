@@ -61,6 +61,7 @@ class HeatingRuntime:
         self._catalog_lock = asyncio.Lock()
         self._targets = Store(hass, 1, f"ufh_heating.{entry.entry_id}.targets")
         self._targets_loaded = False
+        self._target_lock = asyncio.Lock()
         self._automatic_zones = set(settings.allowed)
 
     @callback
@@ -461,9 +462,21 @@ class HeatingRuntime:
         self._automatic_zones.discard(index)
         self._next_control = 0
 
+    async def async_set_target(self, index: int, target: float) -> None:
+        """Finish the HA action only after its target is durably stored."""
+        async with self._target_lock:
+            previous = list(self.model.target)
+            self.set_target(index, target)
+            try:
+                await self._targets.async_save({"targets": list(self.model.target)})
+            except OSError as exc:
+                self.model.target[:] = previous
+                self._next_control = 0
+                raise HomeAssistantError("Could not save heating target; change reverted") from exc
+
     @callback
     def set_target(self, index: int, target: float) -> None:
-        if index not in self.settings.allowed or not self.live:
+        if self._stopping or index not in self.settings.allowed or not self.live:
             raise HomeAssistantError("Controller unavailable or zone not configured")
         try:
             self.model.set_target(index, str(target))
@@ -516,7 +529,8 @@ class HeatingRuntime:
     async def async_stop(self) -> None:
         self._stopping = True
         if self._targets_loaded:
-            await self._targets.async_save({"targets": list(self.model.target)})
+            async with self._target_lock:
+                await self._targets.async_save({"targets": list(self.model.target)})
         self.model.enabled = [False] * 9
         if self._task:
             self._task.cancel()

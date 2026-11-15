@@ -295,6 +295,45 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         self.runtime._message(message(STATUS_TOPIC, wire(4, ack=2, uptime=1700), retain=True))
         self.assertFalse(self.runtime._transport_wake.is_set())
 
+    async def test_target_action_is_saved_before_return_and_reloaded_at_start(self):
+        from homeassistant.helpers.storage import Store
+
+        self.establish()
+        self.runtime._targets_loaded = True
+        climate = HeatingClimate(self.runtime, 0)
+        await climate.async_set_temperature(temperature=23.5)
+        saved = await Store(self.hass, 1, "ufh_heating.test-entry.targets").async_load()
+        self.assertEqual(saved["targets"][0], 2350)
+        await self.runtime.async_stop()
+        reloaded = HeatingRuntime(self.hass, self.entry, self.settings)
+        self.entry.async_create_background_task = lambda hass, task, name: asyncio.create_task(task)
+        with (
+            patch.object(reloaded, "_prepare", return_value=self.runtime.maintenance),
+            patch(
+                "custom_components.ufh_heating.runtime.mqtt.async_subscribe",
+                new=AsyncMock(return_value=lambda: None),
+            ),
+        ):
+            await reloaded.async_start()
+            self.assertEqual(reloaded.model.target[0], 2350)
+            await reloaded.async_stop()
+
+    async def test_failed_target_save_reverts_request_and_concurrent_actions_keep_latest(self):
+        from homeassistant.helpers.storage import Store
+
+        self.establish()
+        self.runtime._targets_loaded = True
+        with patch.object(self.runtime._targets, "async_save", new=AsyncMock(side_effect=OSError)):
+            with self.assertRaises(HomeAssistantError):
+                await self.runtime.async_set_target(0, 24)
+        self.assertEqual(self.runtime.model.target[0], 2200)
+        await asyncio.gather(
+            self.runtime.async_set_target(0, 23), self.runtime.async_set_target(0, 24.5)
+        )
+        saved = await Store(self.hass, 1, "ufh_heating.test-entry.targets").async_load()
+        self.assertEqual(saved["targets"][0], 2450)
+        await self.runtime.async_stop()
+
     async def test_targets_survive_unload_without_restoring_active_zone_modes(self):
         from homeassistant.helpers.storage import Store
 

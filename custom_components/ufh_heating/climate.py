@@ -118,7 +118,7 @@ class HeatingClimate(HeatingEntity, ClimateEntity):
         self.runtime.set_mode(self.index, hvac_mode)
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
-        self.runtime.set_target(self.index, kwargs[ATTR_TEMPERATURE])
+        await self.runtime.async_set_target(self.index, kwargs[ATTR_TEMPERATURE])
 
     async def async_turn_on(self) -> None:
         await self.async_set_hvac_mode(HVACMode.HEAT)

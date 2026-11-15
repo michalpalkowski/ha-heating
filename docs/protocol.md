@@ -3,7 +3,7 @@
 This contract precedes the HA adapter. The private controller is the authority
 for valve timing, temperature policy and boiler sequencing. Operator permission
 is separate from installation facts; it does not certify electrical tests.
-No automatic arming, GPIO bypass or invented watchdog evidence is permitted.
+No automatic hardware commissioning, GPIO bypass or invented watchdog evidence is permitted.
 
 ## Boundaries
 
@@ -256,3 +256,10 @@ Earlier entries without the field explicitly retain the original shared-map
 contract. Both checks still require current authenticated identity, role,
 admission and actual primary-confirmed secondary liveness. This permits a local
 primary wiring correction without pretending the disconnected peer was reflashed.
+
+
+Client 0.4.5 completes a climate target action only after awaiting HA Store save.
+Concurrent target changes are serialized; storage failure reverts the requested
+value and reports an action error. Targets are loaded before subscribing and
+starting control, using the existing strictly validated nine-target store.
+Zone operating modes are evaluated separately from these persisted temperatures.
