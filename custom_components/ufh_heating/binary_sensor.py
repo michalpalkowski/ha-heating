@@ -39,6 +39,7 @@ class HeatingRequest(HeatingEntity, BinarySensorEntity):
         return {
             **self.floorplan_identity,
             "ufh_role": "heat_request",
+            "liveness": "ha_adapter",
             "status_schema": status.schema if status else None,
             "operation_enabled": status.operation_enabled
             if status and self.available and status.schema in (2, 3, 4)

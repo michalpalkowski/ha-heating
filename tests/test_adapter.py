@@ -20,7 +20,7 @@ from test_ota import KEY as MANAGEMENT_KEY
 from test_protocol import KEY, SESSION, status
 
 from custom_components.ufh_heating import config_flow
-from custom_components.ufh_heating.binary_sensor import HeatingLoop
+from custom_components.ufh_heating.binary_sensor import HeatingLoop, HeatingRequest
 from custom_components.ufh_heating.client.maintenance import STATUS_TOPIC, JobPhase, Maintenance
 from custom_components.ufh_heating.client.model import BASE
 from custom_components.ufh_heating.client.wire import decode
@@ -184,6 +184,16 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         )
         self.runtime._connected = True
         self.runtime._owned = True
+
+    async def test_native_heat_request_owns_expiry_without_a_moving_clock(self):
+        self.establish()
+        entity = HeatingRequest(self.runtime)
+        self.assertTrue(entity.available)
+        self.assertEqual(entity.extra_state_attributes["liveness"], "ha_adapter")
+        self.assertNotIn("reported_at_unix_ms", entity.extra_state_attributes)
+        self.runtime._connected = False
+        self.assertFalse(entity.available)
+        self.assertIsNone(entity.is_on)
 
     async def test_ha_entities_are_acknowledged_and_unverified_board_cannot_arm(self):
         self.establish(operation_enabled=False)
