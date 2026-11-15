@@ -22,7 +22,13 @@ standalone gateway before loading this integration. A foreign client ACK after
 ownership was established latches a conflict until integration reload; all zone
 requests are revoked. No retained control, management or sensor evidence is used.
 Heating status is at most 2 s old, commands expire after 5 s, boiler request leases
-after 2.5 s. Disconnect, restart and stale status disarm zones; no restored ON.
+after 2.5 s. Disconnect, restart and stale status revoke all transmitted requests. As explicitly
+requested for client 0.4.3, configured zones begin thermostat regulation again only
+after a fresh authenticated owned session, a healthy operation-enabled controller,
+matching floor map, current valid room sample, live node and new source authority.
+No cached ON packet or commissioning permission is restored. A manual zone OFF is
+honoured throughout that runtime session. The MCU still computes demand and all
+valve/boiler timing; a temperature below target alone never bypasses the guards.
 
 The firmware v0.2 protocol fixes nine zone slots and 14 fitted loops (6 + 8).
 The public zone identifiers describe protocol slots, not a configurable layout.

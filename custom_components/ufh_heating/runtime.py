@@ -61,6 +61,7 @@ class HeatingRuntime:
         self._catalog_lock = asyncio.Lock()
         self._targets = Store(hass, 1, f"ufh_heating.{entry.entry_id}.targets")
         self._targets_loaded = False
+        self._automatic_zones = set(settings.allowed)
 
     @callback
     def subscribe(self, listener: Callable[[], None]) -> Callable[[], None]:
@@ -266,12 +267,15 @@ class HeatingRuntime:
                 evidence = self.maintenance.fresh(1, now)
                 if evidence is None:
                     raise ValueError("device identity not established")
+                previous_session = self.model.node_session
                 state = self.model.accept_status(
                     message.payload, retained=message.retain, monotonic=now
                 )
                 if self.model.node_session != evidence.session:
                     self.model.disconnected()
                     raise ValueError("control/management boot mismatch")
+                if previous_session != self.model.node_session:
+                    self._automatic_zones = set(self.settings.allowed)
                 if state.client_session == self.model.client_session:
                     self._owned = True
                 elif self._owned and any(state.client_session):
@@ -302,6 +306,31 @@ class HeatingRuntime:
             raise HomeAssistantError("MQTT disconnected; command was not sent")
         await mqtt.async_publish(self.hass, topic, payload, qos=0, retain=False)
 
+    @callback
+    def _start_automatic_regulation(self, now: float) -> None:
+        """Evaluate configured zones after a proven session, never restored ON."""
+        if (
+            not self.live
+            or self.maintenance.active
+            or self.model.status is None
+            or not self.model.status.operation_enabled
+            or self.model.status.fault != 0
+            or now >= self._source_authorized_until
+        ):
+            return
+        for index in tuple(self._automatic_zones):
+            sample = self.model.samples[index]
+            if (
+                not self.node_live(self.settings.primary_floor.node_for_zone(index))
+                or self.settings.zones[index].maximum_age_ms > self.temperature_limit_ms(now)
+                or sample is None
+                or sample.quality != 0
+                or sample.expires_monotonic <= now + 0.5
+            ):
+                continue
+            self.model.set_mode(index, "heat")
+            self._automatic_zones.remove(index)
+
     async def async_tick(self, now: float) -> None:
         connected = mqtt.is_connected(self.hass)
         if not connected:
@@ -309,6 +338,7 @@ class HeatingRuntime:
                 self.model.disconnected()
                 self.maintenance.disconnected()
                 self._owned = False
+                self._automatic_zones = set(self.settings.allowed)
             self._connected = False
             self.notify()
             return
@@ -316,9 +346,11 @@ class HeatingRuntime:
         if self.model.status is not None and now - self.model.status_at >= 3:
             self.model.disconnected()
             self._owned = False
+            self._automatic_zones = set(self.settings.allowed)
         if self.conflict:
             self.notify()
             return  # leases expire; never fight another controller with new commands
+        self._start_automatic_regulation(now)
         if now >= self._next_catalog:
             self._next_catalog = now + 30
             await self._refresh_catalog(now)
@@ -359,6 +391,7 @@ class HeatingRuntime:
                 self.last_error = "Transport or maintenance failure; zone requests revoked"
                 self.model.disconnected()
                 self.maintenance.disconnected()
+                self._automatic_zones = set(self.settings.allowed)
                 self.notify()
                 _LOGGER.warning("UFH transport or maintenance failed; zone requests revoked")
             try:
@@ -425,6 +458,7 @@ class HeatingRuntime:
                     translation_domain=DOMAIN, translation_key="controller_disabled"
                 )
         self.model.set_mode(index, mode)
+        self._automatic_zones.discard(index)
         self._next_control = 0
 
     @callback

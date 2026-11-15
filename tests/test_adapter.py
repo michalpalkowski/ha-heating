@@ -7,6 +7,7 @@ import json
 import tempfile
 import time
 import unittest
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -184,6 +185,40 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         )
         self.runtime._connected = True
         self.runtime._owned = True
+
+    async def test_automatic_zones_require_session_source_and_real_current_measurement(self):
+        self.establish()
+        now = time.monotonic()
+        self.runtime._start_automatic_regulation(now)
+        self.assertFalse(any(self.runtime.model.enabled))
+        self.runtime._source_authorized_until = now + 3
+        self.runtime._start_automatic_regulation(now)
+        self.assertFalse(any(self.runtime.model.enabled))
+        self.runtime.accept_sensor(
+            0, State("sensor.temperature", "20", {"unit_of_measurement": "°C"})
+        )
+        self.runtime._start_automatic_regulation(time.monotonic())
+        self.assertTrue(self.runtime.model.enabled[0])
+        self.assertFalse(any(self.runtime.model.enabled[1:]))
+        self.runtime.set_mode(0, "off")
+        self.runtime._start_automatic_regulation(time.monotonic())
+        self.assertFalse(
+            self.runtime.model.enabled[0], "Explicit OFF must not be undone by the next tick"
+        )
+
+    async def test_automatic_zones_never_start_with_stale_sample_or_disabled_board(self):
+        self.establish(operation_enabled=False)
+        now = time.monotonic()
+        self.runtime._source_authorized_until = now + 3
+        self.runtime.accept_sensor(
+            0, State("sensor.temperature", "20", {"unit_of_measurement": "°C"})
+        )
+        self.runtime._start_automatic_regulation(time.monotonic())
+        self.assertFalse(any(self.runtime.model.enabled))
+        self.runtime.model.status = replace(self.runtime.model.status, operation_enabled=True)
+        self.runtime.accept_sensor(0, State("sensor.temperature", "unavailable"))
+        self.runtime._start_automatic_regulation(time.monotonic())
+        self.assertFalse(any(self.runtime.model.enabled))
 
     async def test_native_heat_request_owns_expiry_without_a_moving_clock(self):
         self.establish()
