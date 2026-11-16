@@ -271,3 +271,18 @@ action and restores the previous request. All control-session revocation paths
 also requeue configured zone evaluation, including a new boot status arriving
 before its management identity; the usual identity/ACK/measurement/source guards
 must pass again. A disconnected secondary is likewise reevaluated on return.
+
+
+## Requested regulation versus transport availability (client 0.4.7)
+
+A temporary peer outage or unsupported temperature deadline inhibits the outgoing
+zone enable bit; it does not edit the requested thermostat mode. Every pending
+ACK record contains the inhibited wire state, so unavailable transport cannot
+appear as confirmed heating. When fresh authenticated peer/map/admission evidence
+returns, the requested mode can resume using current measurements and source
+authority. Explicit OFF still clears that intent. Mapping mismatch, owner conflict,
+maintenance and full disconnect retain their explicit revocation behavior.
+
+This prevents a race where readiness expired between automatic evaluation and
+packet encoding: encoding previously erased the request after its automatic-start
+marker had already been consumed, leaving a room OFF after communication recovered.

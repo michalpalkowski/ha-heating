@@ -76,6 +76,26 @@ class SecondaryTests(unittest.TestCase):
         self.assertEqual(packet.payload[22], 0)
         self.assertIn(struct.unpack_from(">Q", packet.payload, 23)[0], (2_100_999, 2_101_000))
 
+    def test_transient_secondary_loss_revokes_wire_authority_without_erasing_room_intent(self):
+        model = gateway()
+        model.accept_status(status(), retained=False, monotonic=1)
+        model.set_mode(5, "heat")
+        blocked = decode(
+            model.command(monotonic=1.1, source_authority=True, secondary_ready=False), model.key
+        )
+        self.assertEqual(int.from_bytes(blocked.payload[16:18], "big"), 0)
+        self.assertTrue(model.enabled[5], "Transport state must not rewrite thermostat intent")
+        self.assertFalse(model.pending[blocked.sequence].zones[5].enabled)
+        recovered = decode(
+            model.command(monotonic=1.2, source_authority=True, secondary_ready=True), model.key
+        )
+        self.assertEqual(int.from_bytes(recovered.payload[16:18], "big"), 1 << 5)
+        model.set_mode(5, "off")
+        off = decode(
+            model.command(monotonic=1.3, source_authority=True, secondary_ready=True), model.key
+        )
+        self.assertEqual(int.from_bytes(off.payload[16:18], "big"), 0)
+
     def test_secondary_availability_requires_admission_freshness_and_mapping(self):
         settings = Settings.parse(
             {**DATA, "upper_device_id": (b"R" * 16).hex(), "upper_public_key": (b"S" * 32).hex()},

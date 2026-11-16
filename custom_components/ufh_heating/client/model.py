@@ -252,8 +252,6 @@ class Gateway:
             sample = self.samples[index]
             compatible = _cfg.maximum_age_ms <= temperature_limit_ms
             remote_ready = secondary_ready or self.primary_floor.node_for_zone(index) == 1
-            if not compatible or not remote_ready:
-                self.enabled[index] = False
             fresh = compatible and sample is not None and sample.expires_monotonic > monotonic + 0.5
             until = (
                 uptime + int((sample.expires_monotonic - monotonic) * 1000)
@@ -262,7 +260,10 @@ class Gateway:
             )
             zones.append(
                 Zone(
-                    self.enabled[index] and self.status.primary_floor == self.primary_floor,
+                    self.enabled[index]
+                    and compatible
+                    and remote_ready
+                    and self.status.primary_floor == self.primary_floor,
                     self.target[index],
                     sample.temperature if fresh and sample else None,
                     sample.quality if fresh and sample else (2 if sample else 1),
