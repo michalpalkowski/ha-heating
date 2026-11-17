@@ -329,17 +329,21 @@ class Gateway:
         self.enabled[index] = mode == "heat"
 
     def set_target(self, index: int, value: str) -> None:
-        # Decimal avoids binary rounding and rejects NaN/Infinity.
-        from decimal import Decimal, InvalidOperation
+        self.target[index] = parse_target(value)
 
-        try:
-            target = Decimal(value) * 100
-            if (
-                not target.is_finite()
-                or target != target.to_integral_value()
-                or not 1000 <= target <= 2800
-            ):
-                raise ValueError("setpoint outside 10–28°C")
-            self.target[index] = int(target)
-        except InvalidOperation as error:
-            raise ValueError("invalid setpoint") from error
+
+def parse_target(value: str) -> int:
+    """Validate a setpoint without changing any requested control state."""
+    from decimal import Decimal, InvalidOperation
+
+    try:
+        target = Decimal(value) * 100
+        if (
+            not target.is_finite()
+            or target != target.to_integral_value()
+            or not 1000 <= target <= 2800
+        ):
+            raise ValueError("setpoint outside 10–28°C")
+        return int(target)
+    except InvalidOperation as error:
+        raise ValueError("invalid setpoint") from error

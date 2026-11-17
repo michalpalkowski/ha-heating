@@ -269,7 +269,7 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(HomeAssistantError) as stopped:
             self.runtime.set_mode(0, "heat")
         self.assertEqual(stopped.exception.translation_key, "controller_disabled")
-        self.runtime.set_target(0, 23)
+        await self.runtime.async_set_target(0, 23)
         self.assertEqual(self.runtime.model.target[0], 2300)
         self.assertFalse(any(self.runtime.model.enabled))
         self.runtime.model.status = replace(self.runtime.model.status, schema=1)
@@ -299,7 +299,6 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         from homeassistant.helpers.storage import Store
 
         self.establish()
-        self.runtime._targets_loaded = True
         climate = HeatingClimate(self.runtime, 0)
         await climate.async_set_temperature(temperature=23.5)
         saved = await Store(self.hass, 1, "ufh_heating.test-entry.targets").async_load()
@@ -318,11 +317,43 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(reloaded.model.target[0], 2350)
             await reloaded.async_stop()
 
+    async def test_no_new_target_is_transmitted_before_durable_commit(self):
+        self.establish()
+        entered, release = asyncio.Event(), asyncio.Event()
+        save = self.runtime._targets.async_save
+
+        async def delayed(data):
+            entered.set()
+            await release.wait()
+            await save(data)
+
+        with patch.object(self.runtime._targets, "async_save", new=delayed):
+            request = asyncio.create_task(self.runtime.async_set_target(0, 24))
+            await entered.wait()
+            self.assertEqual(self.runtime.model.target[0], 2200)
+            packet = decode(self.runtime.model.command(monotonic=time.monotonic()), KEY)
+            self.assertEqual(int.from_bytes(packet.payload[18:20], "big"), 2200)
+            release.set()
+            await request
+        self.assertEqual(self.runtime.model.target[0], 2400)
+        await self.runtime.async_stop()
+
+    async def test_shutdown_never_overwrites_durable_targets_with_a_stale_snapshot(self):
+        from homeassistant.helpers.storage import Store
+
+        self.establish()
+        await self.runtime.async_set_target(0, 23.5)
+        self.runtime.model.target[0] = 2100
+        with patch.object(self.runtime._targets, "async_save", new=AsyncMock()) as save:
+            await self.runtime.async_stop()
+            save.assert_not_awaited()
+        stored = await Store(self.hass, 1, "ufh_heating.test-entry.targets").async_load()
+        self.assertEqual(stored["targets"][0], 2350)
+
     async def test_failed_target_save_reverts_request_and_concurrent_actions_keep_latest(self):
         from homeassistant.helpers.storage import Store
 
         self.establish()
-        self.runtime._targets_loaded = True
         with patch.object(self.runtime._targets, "async_save", new=AsyncMock(side_effect=OSError)):
             with self.assertRaises(HomeAssistantError):
                 await self.runtime.async_set_target(0, 24)
@@ -338,7 +369,6 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         from homeassistant.util.file import WriteError
 
         self.establish()
-        self.runtime._targets_loaded = True
         await self.runtime.async_set_target(0, 23)
         with patch.object(
             self.runtime._targets,
@@ -364,8 +394,7 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         from homeassistant.helpers.storage import Store
 
         self.establish()
-        self.runtime._targets_loaded = True
-        self.runtime.set_target(0, 23.5)
+        await self.runtime.async_set_target(0, 23.5)
         self.runtime.model.enabled[0] = True
         await self.runtime.async_stop()
         saved = await Store(self.hass, 1, "ufh_heating.test-entry.targets").async_load()

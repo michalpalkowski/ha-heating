@@ -286,3 +286,18 @@ maintenance and full disconnect retain their explicit revocation behavior.
 This prevents a race where readiness expired between automatic evaluation and
 packet encoding: encoding previously erased the request after its automatic-start
 marker had already been consumed, leaving a room OFF after communication recovered.
+
+## Durable target commit (client 0.4.8)
+
+A temperature request is validated into an immutable candidate list without
+changing the live control model. The HA Store write and independent readback
+must succeed before that candidate can be transmitted. A storage error leaves
+the old requested temperatures active and fails the service call. There are no
+additional delayed saves or unload-time snapshots which could replace a newer
+durable commit with old in-memory values. Every successful change is already
+stored before shutdown begins. Startup strictly validates and loads the same
+nine-zone record before enabling transport. `requested_temperature` exposes the
+durable desired value separately from the acknowledged target.
+
+Regression tests cover control encoding during a blocked write, write/readback
+failure, concurrent actions, reload from disk, and shutdown with a stale model.

@@ -21,7 +21,7 @@ from homeassistant.helpers.event import (
 from homeassistant.helpers.storage import Store
 
 from .client.maintenance import COMMAND_TOPIC, STATUS_TOPIC, JobPhase, Maintenance
-from .client.model import BASE, Gateway
+from .client.model import BASE, Gateway, parse_target
 from .client.releases import Version
 from .const import DOMAIN
 from .settings import Settings
@@ -60,7 +60,6 @@ class HeatingRuntime:
         self._transport_wake = asyncio.Event()
         self._catalog_lock = asyncio.Lock()
         self._targets = Store(hass, 1, f"ufh_heating.{entry.entry_id}.targets")
-        self._targets_loaded = False
         self._target_lock = asyncio.Lock()
         self._automatic_zones = set(settings.allowed)
 
@@ -142,7 +141,6 @@ class HeatingRuntime:
                 if type(value) is not int or not 1000 <= value <= 2800:
                     raise ValueError("invalid saved target")
                 self.model.target[i] = value
-        self._targets_loaded = True
         self.maintenance = await self.hass.async_add_executor_job(self._prepare)
         topics = {STATUS_TOPIC, BASE + "/main/status"}
         topics.update(
@@ -468,39 +466,34 @@ class HeatingRuntime:
         self._next_control = 0
 
     async def async_set_target(self, index: int, target: float) -> None:
-        """Finish the HA action only after its target is durably stored."""
+        """Durable desired state precedes transmission, never the other way round."""
         async with self._target_lock:
-            previous = list(self.model.target)
-            self.set_target(index, target)
+            if (
+                self._stopping
+                or self.hass.state is CoreState.stopping
+                or index not in self.settings.allowed
+                or not self.live
+            ):
+                raise HomeAssistantError("Controller unavailable or zone not configured")
             try:
-                expected = {"targets": list(self.model.target)}
+                candidate = list(self.model.target)
+                candidate[index] = parse_target(str(target))
+            except ValueError as exc:
+                raise HomeAssistantError("Setpoint must be between 10 and 28 °C") from exc
+            expected = {"targets": candidate}
+            try:
                 await self._targets.async_save(expected)
-                # HA Store logs WriteError instead of propagating it. Verify
-                # the stored value, not merely that its coroutine returned.
                 saved = await Store(self.hass, 1, self._targets.key, read_only=True).async_load()
                 if saved != expected:
                     raise OSError("Target storage readback differs")
             except (OSError, ValueError) as exc:
-                self.model.target[:] = previous
-                self._next_control = 0
-                raise HomeAssistantError("Could not save heating target; change reverted") from exc
-
-    @callback
-    def set_target(self, index: int, target: float) -> None:
-        if (
-            self._stopping
-            or self.hass.state is CoreState.stopping
-            or index not in self.settings.allowed
-            or not self.live
-        ):
-            raise HomeAssistantError("Controller unavailable or zone not configured")
-        try:
-            self.model.set_target(index, str(target))
-        except ValueError as exc:
-            raise HomeAssistantError("Setpoint must be between 10 and 28 °C") from exc
-        self._next_control = 0
-        if self._targets_loaded:
-            self._targets.async_delay_save(lambda: {"targets": list(self.model.target)}, 2)
+                raise HomeAssistantError(
+                    "Could not save heating target; change was not sent"
+                ) from exc
+            self.model.target[:] = candidate
+            self._next_control = 0
+            self._transport_wake.set()
+            self.notify()
 
     async def async_install(self, node: int, version: str | None, backup: bool) -> None:
         if backup:
@@ -544,9 +537,6 @@ class HeatingRuntime:
 
     async def async_stop(self) -> None:
         self._stopping = True
-        if self._targets_loaded:
-            async with self._target_lock:
-                await self._targets.async_save({"targets": list(self.model.target)})
         self.model.enabled = [False] * 9
         if self._task:
             self._task.cancel()
