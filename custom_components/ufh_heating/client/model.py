@@ -80,7 +80,7 @@ class Gateway:
         self.confirmed: tuple[Zone, ...] | None = None
         self.confirmed_authority = False
         self.target = [z.initial_target for z in zones]
-        self.enabled = [False] * 9  # explicit safe startup, operator must arm climate entities
+        self.enabled = [False] * 9  # runtime re-evaluates configured zones after fresh ownership
         self.samples: list[Sample | None] = [None] * 9
         self.last_report = [0] * 9
         self.last_event = [None] * 9
@@ -244,7 +244,6 @@ class Gateway:
         if self.status is None or self.node_session is None or monotonic - self.status_at > 3:
             return None
         if not mapping_verified:
-            self.enabled = [False] * 9
             source_authority = False
         uptime = self.status.uptime_ms + int((monotonic - self.status_at) * 1000)
         zones = []
@@ -261,6 +260,7 @@ class Gateway:
             zones.append(
                 Zone(
                     self.enabled[index]
+                    and mapping_verified
                     and compatible
                     and remote_ready
                     and self.status.primary_floor == self.primary_floor,

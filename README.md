@@ -121,3 +121,8 @@ controller unavailable. Panels can distinguish a configured, disconnected floor
 from a floor that was never configured. No stale temperature or output value is
 exposed as live evidence. Missing RS485 and unsupported report-age settings have
 separate translated messages.
+
+Client **0.4.9** retains desired zone modes across temporary mapping-proof loss.
+Actual transmitted enables and source authority remain OFF until the mapping is
+fresh and matches. Recovery no longer requires re-enabling zones or reloading
+the integration; a manually disabled zone is preserved.

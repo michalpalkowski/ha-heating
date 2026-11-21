@@ -57,7 +57,7 @@ class MappingTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             client.accept(mapped_status(2), True, 1.1)
 
-    def test_wrong_mapping_revokes_enables_and_authority_but_allows_off_ack(self):
+    def test_mapping_failure_sends_off_without_erasing_intent_and_recovers(self):
         model = gateway()
         model.accept_status(status(), retained=False, monotonic=1)
         model.set_mode(8, "heat")
@@ -66,7 +66,19 @@ class MappingTests(unittest.TestCase):
         )
         self.assertEqual(packet.payload[16:18], bytes(2))
         self.assertEqual(packet.payload[144], 0)
-        self.assertFalse(any(model.enabled))
+        self.assertTrue(model.enabled[8])
+        self.assertFalse(model.enabled[7])
+        recovered = decode(
+            model.command(monotonic=1.2, source_authority=True, mapping_verified=True), model.key
+        )
+        self.assertEqual(recovered.payload[16:18], (1 << 8).to_bytes(2, "big"))
+        self.assertEqual(recovered.payload[144], 1)
+        model.set_mode(8, "off")
+        model.command(monotonic=1.3, source_authority=True, mapping_verified=False)
+        off = decode(
+            model.command(monotonic=1.4, source_authority=True, mapping_verified=True), model.key
+        )
+        self.assertEqual(off.payload[16:18], bytes(2))
 
     def test_runtime_compares_actual_config_and_does_not_accept_stale_proof(self):
         settings = Settings.parse(DATA, {"upper_channels": list(UPPER)})

@@ -301,3 +301,12 @@ durable desired value separately from the acknowledged target.
 
 Regression tests cover control encoding during a blocked write, write/readback
 failure, concurrent actions, reload from disk, and shutdown with a stale model.
+
+## Desired mode versus temporary mapping failure — client 0.4.9
+
+A configured zone's desired mode is retained when authenticated mapping evidence
+is missing or mismatched. Every command while mapping verification fails has all
+zone enables and source authority OFF. Recovery requires fresh matching mapping
+proof, the live owned session and the existing sample/source/output checks.
+A user-selected OFF remains OFF. UI confirmed mode remains ACK-based; retaining
+intent is neither optimistic actuation nor acceptance of an unverified mapping.
