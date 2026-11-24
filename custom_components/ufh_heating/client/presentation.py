@@ -48,7 +48,7 @@ def bindings_from_config(config: dict) -> tuple[LoopBinding, ...]:
         if not isinstance(channels, list) or len(channels) != count:
             raise ValueError("explicit physical loop-channel mapping is required")
         if (
-            any(type(c) is not int or not 0 <= c < count for c in channels)
+            any(type(c) is not int or not 0 <= c < 8 for c in channels)
             or len(set(channels)) != count
         ):
             raise ValueError("loop channels must be distinct fitted GPIO channels")

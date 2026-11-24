@@ -310,3 +310,12 @@ zone enables and source authority OFF. Recovery requires fresh matching mapping
 proof, the live owned session and the existing sample/source/output checks.
 A user-selected OFF remains OFF. UI confirmed mode remains ACK-based; retaining
 intent is neither optimistic actuation nor acceptance of an unverified mapping.
+
+## Client 0.5.0 / firmware 0.5.9
+
+Ground loop channels are six distinct physical indexes 0..7 of an eight-output
+board. Unmapped outputs are never requested by normal thermostat control.
+No GPIO permutation is added: configured channel indexes remain physical IN-1.
+Temperature report age is configurable to 7200 seconds only with firmware 0.5.9+;
+older devices keep their existing 900/2700-second capability limits. Original
+report timestamps and short command/source leases remain unchanged.

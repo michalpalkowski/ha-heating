@@ -9,7 +9,8 @@ def mapping_fingerprint(ground, upper) -> bytes:
             not isinstance(values, list | tuple)
             or len(values) != count
             or any(type(v) is not int for v in values)
-            or set(values) != set(range(count))
+            or len(set(values)) != count
+            or any(not 0 <= v <= 7 for v in values)
         ):
             raise ValueError("explicit fitted-channel permutation required")
     return hashlib.sha256(b"ufh/loop-mapping/v1\0" + bytes(ground) + bytes(upper)).digest()

@@ -49,6 +49,22 @@ class SecondaryTests(unittest.TestCase):
             ).secondary_enabled
         )
 
+    def test_two_hour_capability_requires_new_firmware_and_keeps_report_age(self):
+        runtime = HeatingRuntime(MagicMock(), MagicMock(), Settings.parse(DATA, {}))
+        runtime.maintenance = self.client
+        self.client.accept(evidence(version=(0, 5, 8)), False, 1)
+        self.assertEqual(runtime.temperature_limit_ms(1.1), 2_700_000)
+        self.client.accept(evidence(2, version=(0, 5, 9)), False, 1.2)
+        self.assertEqual(runtime.temperature_limit_ms(1.3), 7_200_000)
+        model = gateway()
+        model.config = tuple(dataclasses.replace(z, maximum_age_ms=7_200_000) for z in model.config)
+        model.accept_status(status(), retained=False, monotonic=10)
+        model.measurement(0, report(), retained=False, unix_ms=1_600_000, monotonic=10)
+        self.assertEqual(model.samples[0].expires_monotonic, 6610)
+        model.set_mode(0, "heat")
+        model.command(monotonic=10.1, temperature_limit_ms=7_200_000)
+        self.assertEqual(model.samples[0].expires_monotonic, 6610)
+
     def test_admission_revokes_modes_and_sends_only_explicit_flag(self):
         self.client.accept(evidence(), False, 1)
         model = gateway()

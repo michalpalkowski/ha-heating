@@ -41,7 +41,7 @@ class MappingTests(unittest.TestCase):
         )
         for ground, upper in [
             (GROUND, (0,) * 8),
-            ((0, 1, 2, 3, 4, 6), UPPER),
+            ((0, 1, 2, 3, 4, 8), UPPER),
             (GROUND, (True, 1, 2, 3, 4, 5, 6, 7)),
         ]:
             with self.assertRaises(ValueError):
@@ -89,3 +89,21 @@ class MappingTests(unittest.TestCase):
         self.assertFalse(runtime.mapping_matches(4))
         runtime.maintenance.accept(mapped_status(2, fingerprint=bytes(32)), False, 4.1)
         self.assertFalse(runtime.mapping_matches(4.2))
+
+
+class ReversedGroundMappingTests(unittest.TestCase):
+    def test_six_loops_can_use_last_six_of_eight_relays(self):
+        value = mapping_fingerprint((7, 6, 5, 4, 3, 2), tuple(range(8)))
+        self.assertNotEqual(value, mapping_fingerprint(tuple(range(6)), tuple(range(8))))
+        settings = Settings.parse(
+            DATA,
+            {
+                "ground_channels": [7, 6, 5, 4, 3, 2],
+                "maximum_age_seconds": 7200,
+                "zones": ["ground_bathroom", "office", "living", "kitchen_hall_boiler"],
+            },
+        )
+        self.assertEqual(
+            [b.channel for b in settings.bindings if b.floor == "ground"], [7, 6, 5, 4, 3, 2]
+        )
+        self.assertEqual(settings.zones[0].maximum_age_ms, 7_200_000)

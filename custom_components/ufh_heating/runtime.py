@@ -98,6 +98,8 @@ class HeatingRuntime:
 
     def temperature_limit_ms(self, now: float) -> int:
         state = self.maintenance.fresh(1, now)
+        if state and state.version >= Version(0, 5, 9):
+            return 7_200_000
         return 2_700_000 if state and state.version >= Version(0, 5, 0) else 900_000
 
     def node_live(self, node: int) -> bool:
